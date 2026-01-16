@@ -24,7 +24,7 @@
 
 ---
 
-## Current Focus: v2 - Orchestrator
+## Current Focus: v2 - Orchestrator (Python Agents)
 
 ### Go Orchestrator
 - [ ] Project setup (go.mod)
@@ -41,9 +41,23 @@
 
 ### Rust Stream Parser
 - [ ] Project setup (Cargo.toml)
-- [ ] Parse agent stdout into structured events
+- [ ] Parse Python agent JSON format
 - [ ] Token counting (tiktoken-rs)
-- [ ] Emit JSON events
+- [ ] Emit unified JSON events
+
+---
+
+## Up Next: v2.5 - Claude Code Support
+
+### Rust Stream Parser (Extended)
+- [ ] Parse Claude Code `stream-json` format
+- [ ] Normalize to same unified events as Python agents
+- [ ] Handle Claude Code specific events (tool_use, result, etc.)
+
+### Go Orchestrator (Extended)
+- [ ] Add `type` field to spawn endpoint (python | claude)
+- [ ] Spawn Claude Code with `--output-format stream-json`
+- [ ] Route Claude Code stdout through parser
 
 ---
 

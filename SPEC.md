@@ -6,6 +6,23 @@ A visual multi-agent orchestration system where you can spawn, monitor, and coor
 
 ---
 
+## Agent Types
+
+The orchestrator supports **two types of agents**:
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| **Python** | Our custom agents (v0-v3) | Educational, lightweight, full control |
+| **Claude Code** | Anthropic's CLI agent | Production power, real tooling |
+
+**Why both?**
+- Python agents: Learn how agents work, customize everything
+- Claude Code: Battle-tested, MCP support, advanced features
+
+**Key insight:** Claude Code supports `--output-format stream-json`, which outputs structured JSON events instead of terminal UI. This means both agent types can be parsed uniformly by our Rust stream parser.
+
+---
+
 ## Stack
 
 | Component | Language | Why |
@@ -69,56 +86,70 @@ while True:
 
 ### v2: Orchestrator
 
-**Goal:** Manage multiple agent processes.
+**Goal:** Manage multiple agent processes (both Python and Claude Code).
 
 **Components:**
 
 ```
-┌─────────────────────────────────────────┐
-│           Go Orchestrator               │
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │     Agent Process Manager           ││
-│  │  - Spawn/kill Python processes      ││
-│  │  - Track PID, status, tokens        ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │        Rust Stream Parser           ││
-│  │  - Parse agent stdout               ││
-│  │  - Count tokens (tiktoken-rs)       ││
-│  │  - Emit structured JSON events      ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │     WebSocket Event Bus             ││
-│  │  - Broadcast to connected UIs       ││
-│  │  - Receive commands from UI         ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  ┌─────────────────────────────────────┐│
-│  │         REST API                    ││
-│  │  - POST /agents (spawn)             ││
-│  │  - DELETE /agents/:id (kill)        ││
-│  │  - POST /agents/:id/message         ││
-│  └─────────────────────────────────────┘│
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                  Go Orchestrator                         │
+│                                                          │
+│   spawn("python", ["agents/v1.py", task])               │
+│   spawn("claude", ["-p", task, "--output-format",       │
+│                    "stream-json"])                       │
+│                                                          │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │     Agent Process Manager                           ││
+│  │  - Spawn/kill Python OR Claude Code processes       ││
+│  │  - Track PID, status, tokens per agent              ││
+│  │  - Route stdout through stream parser               ││
+│  └─────────────────────────────────────────────────────┘│
+│                                                          │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │        Rust Stream Parser                           ││
+│  │  - Parse TWO JSON formats:                          ││
+│  │    1. Python agent output (our format)              ││
+│  │    2. Claude Code stream-json (Anthropic's)         ││
+│  │  - Normalize both → unified event stream            ││
+│  │  - Count tokens                                     ││
+│  └─────────────────────────────────────────────────────┘│
+│                                                          │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │     WebSocket Event Bus                             ││
+│  │  - Broadcast to connected UIs                       ││
+│  │  - Receive commands from UI                         ││
+│  └─────────────────────────────────────────────────────┘│
+│                                                          │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │         REST API                                    ││
+│  │  - POST /agents (spawn python OR claude)            ││
+│  │  - DELETE /agents/:id (kill)                        ││
+│  │  - POST /agents/:id/message                         ││
+│  └─────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────┘
 ```
 
 **Data flow:**
 ```
-Python Agent stdout
-       ↓
-  agent-stream (Rust binary)
-       ↓
-  Structured JSON events
-       ↓
-  Go Orchestrator
-       ↓
-  WebSocket → React UI
+Python Agent stdout          Claude Code stdout
+(our JSON format)            (--output-format stream-json)
+         │                            │
+         └──────────┬─────────────────┘
+                    ▼
+          Rust Stream Parser
+          (normalizes both)
+                    │
+                    ▼
+           Unified JSON events
+                    │
+                    ▼
+            Go Orchestrator
+                    │
+                    ▼
+           WebSocket → React UI
 ```
 
-**Deliverable:** `agent-orchestra` binary that can spawn and manage multiple agents via REST API.
+**Deliverable:** `agent-orchestra` binary that can spawn and manage both Python agents and Claude Code instances via REST API.
 
 ---
 
@@ -314,6 +345,19 @@ GET    /api/zones               # List zones
 PUT    /api/zones/:id/agents    # Assign agents to zone
 ```
 
+**Spawn Agent Request:**
+```json
+{
+  "type": "python" | "claude",
+  "task": "fix the auth bug",
+  "workdir": "/path/to/repo",
+  "agent": "v3_subagent"        // For python type only
+}
+```
+
+- `type: "python"` → spawns `python agents/{agent}.py "{task}"`
+- `type: "claude"` → spawns `claude -p "{task}" --output-format stream-json`
+
 ### WebSocket Events
 
 **Server → Client:**
@@ -337,34 +381,58 @@ PUT    /api/zones/:id/agents    # Assign agents to zone
 
 ## Rust Component: agent-stream
 
-**Purpose:** Parse Python agent stdout, emit structured events, count tokens.
+**Purpose:** Normalize agent output from multiple sources into unified events.
 
-**Input (raw stdout):**
-```
-[Turn 1]
-I'll start by reading the file.
+The stream parser is the **normalization layer** that lets the UI treat all agents uniformly, regardless of whether they're Python agents or Claude Code instances.
 
-$ cat auth.py
-def login(user, password):
-    ...
+### Input Formats
 
-The function needs input validation.
-```
-
-**Output (JSON events):**
+**Format 1: Python Agent (our custom format)**
 ```json
 {"type":"turn","number":1}
-{"type":"thinking","content":"I'll start by reading the file.","tokens":12}
+{"type":"thinking","content":"I'll read the file."}
 {"type":"tool_call","tool":"bash","args":{"command":"cat auth.py"}}
-{"type":"tool_result","content":"def login(user, password):\n    ...","tokens":47}
-{"type":"thinking","content":"The function needs input validation.","tokens":8}
+{"type":"tool_result","content":"def login():..."}
+```
+
+**Format 2: Claude Code (`--output-format stream-json`)**
+```json
+{"type":"assistant","message":{"content":[{"type":"text","text":"I'll read..."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"auth.py"}}]}}
+{"type":"result","result":"def login():..."}
+```
+
+### Output (Unified Events)
+
+Both formats are normalized to:
+```json
+{"type":"turn","number":1,"agentId":"abc123"}
+{"type":"thinking","content":"I'll read the file.","tokens":8}
+{"type":"tool_call","tool":"read","args":{"path":"auth.py"}}
+{"type":"tool_result","content":"def login():...","tokens":12}
+```
+
+### Implementation
+
+```rust
+enum AgentFormat {
+    Python,
+    ClaudeCode,
+}
+
+fn parse_line(line: &str, format: AgentFormat) -> Option<UnifiedEvent> {
+    match format {
+        AgentFormat::Python => parse_python_event(line),
+        AgentFormat::ClaudeCode => parse_claude_event(line),
+    }
+}
 ```
 
 **What you'll learn:**
 - String vs &str (ownership)
 - Option and Result (error handling)
-- serde for JSON
-- Reading stdin with iterators
+- serde for JSON (with multiple schemas)
+- Enums for format switching
 - Pattern matching
 
 ---
