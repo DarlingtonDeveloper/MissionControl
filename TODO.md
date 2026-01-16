@@ -32,16 +32,9 @@
 - [x] Track PID, status, tokens per agent
 - [x] Environment passthrough (ANTHROPIC_API_KEY)
 - [x] REST API endpoints
-  - [x] POST /api/agents (spawn)
-  - [x] GET /api/agents (list)
-  - [x] DELETE /api/agents/:id (kill)
-  - [x] POST /api/agents/:id/message
 - [x] WebSocket event bus
-  - [x] Broadcast events to connected UIs
-  - [x] Receive commands from UI
 
 ### Rust Stream Parser
-- [x] Project setup (Cargo.toml)
 - [x] Parse Python agent format (JSON + plain text)
 - [x] Parse Claude Code stream-json format
 - [x] Normalize both to unified events
@@ -49,31 +42,47 @@
 
 ---
 
-## Current Focus: v3 - 2D Dashboard
+## Completed: v3 - 2D Dashboard
 
-### Project Setup
-- [ ] Create React app with Vite
-- [ ] Install Tailwind CSS
-- [ ] Install Zustand for state
-- [ ] WebSocket connection hook
+### React + Vite + Tailwind
+- [x] Project setup
+- [x] Zustand state management
+- [x] WebSocket connection hook
 
 ### Components
-- [ ] Layout (header, sidebar, main)
-- [ ] AgentList - list all agents with status
-- [ ] AgentCard - expandable card per agent
-- [ ] SpawnDialog - form to spawn new agent
-- [ ] ChatPanel - send messages, see responses
-- [ ] ToolLog - real-time tool calls stream
-- [ ] StatsBar - total tokens, active count
+- [x] Header with stats
+- [x] AgentList sidebar
+- [x] AgentCard with status
+- [x] SpawnDialog (Python + Claude Code)
+- [x] EventLog stream
 
-### State Management
-- [ ] Agents store (list, add, update, remove)
-- [ ] WebSocket store (connection, events)
-- [ ] UI store (selected agent, panels)
+### Tested
+- [x] Spawn agents from UI
+- [x] View agent list
+- [x] See agent status updates
+
+---
+
+## Current Focus: v4 - 3D Visualization
+
+### Setup
+- [ ] Install React Three Fiber + drei
+- [ ] Create 3D scene with isometric camera
+
+### Scene Elements
+- [ ] Floor/ground plane
+- [ ] Agent avatars (3D characters)
+- [ ] Zone areas
+- [ ] Connection lines (parent/child)
+
+### Interactions
+- [ ] Click agent to select
+- [ ] Floating UI panels
+- [ ] Smooth animations
 
 ---
 
 ## Later
 
-- [ ] v4: 3D Visualization (React Three Fiber)
 - [ ] v5: Persistence layer
+- [ ] Polish: Landing page, docs, branding
