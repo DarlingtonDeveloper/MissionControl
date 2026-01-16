@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { spawnAgent } from '../stores/agentStore'
+import { spawnAgent, useAgentStore } from '../stores/agentStore'
 import type { AgentType } from '../types'
 
 interface SpawnDialogProps {
@@ -15,6 +15,9 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const addAgent = useAgentStore((s) => s.addAgent)
+  const selectAgent = useAgentStore((s) => s.selectAgent)
+
   if (!open) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,12 +28,14 @@ export function SpawnDialog({ open, onClose }: SpawnDialogProps) {
     setError('')
 
     try {
-      await spawnAgent({
+      const newAgent = await spawnAgent({
         type,
         task: task.trim(),
         workdir: workdir.trim() || undefined,
         agent: type === 'python' ? agent : undefined
       })
+      addAgent(newAgent)
+      selectAgent(newAgent.id)
       setTask('')
       onClose()
     } catch (err) {
