@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mike/agent-orchestra/manager"
+	"github.com/mike/mission-control/manager"
 )
 
 // Handler holds dependencies for API handlers

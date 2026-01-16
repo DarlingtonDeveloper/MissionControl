@@ -1,4 +1,4 @@
-# Agent Orchestra
+# MissionControl
 
 A visual multi-agent orchestration system for spawning, monitoring, and coordinating AI agents working on your codebase.
 

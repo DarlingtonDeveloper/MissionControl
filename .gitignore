@@ -2,7 +2,7 @@
 stream-parser/target/
 
 # Go
-orchestrator/agent-orchestra
+orchestrator/mission-control
 
 # Python
 __pycache__/

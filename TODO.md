@@ -1,4 +1,4 @@
-# Agent Orchestra — TODO
+# MissionControl — TODO
 
 ## ✅ Completed: v1 - Agent Fundamentals
 

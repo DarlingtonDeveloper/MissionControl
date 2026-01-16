@@ -2,7 +2,7 @@
 name = "agent-stream"
 version = "0.1.0"
 edition = "2021"
-description = "Stream parser for Agent Orchestra - normalizes agent output to unified events"
+description = "Stream parser for MissionControl - normalizes agent output to unified events"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

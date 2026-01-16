@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/mike/agent-orchestra/manager"
+	"github.com/mike/mission-control/manager"
 )
 
 var upgrader = websocket.Upgrader{

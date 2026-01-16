@@ -1,4 +1,4 @@
-# Agent Orchestra — Project Spec
+# MissionControl — Project Spec
 
 ## Vision
 
@@ -20,15 +20,15 @@ A visual multi-agent orchestration system where you can spawn, monitor, and coor
 ## Distribution
 
 **User installs orchestrator via:**
-- Homebrew: `brew install mike/tap/agent-orchestra`
-- Go: `go install github.com/mike/agent-orchestra@latest`  
+- Homebrew: `brew install mike/tap/mission-control`
+- Go: `go install github.com/mike/mission-control@latest`  
 - Direct download from GitHub Releases
 
 **All three point to the same binaries** built by GoReleaser on git tag.
 
 **Python environment:**
 - Go binary embeds `uv` (Rust-based Python manager)
-- On first run: extracts to `~/.agent-orchestra/`, installs deps automatically
+- On first run: extracts to `~/.mission-control/`, installs deps automatically
 - User never touches pip or venv
 
 **Web UI:**
@@ -118,7 +118,7 @@ Python Agent stdout
   WebSocket → React UI
 ```
 
-**Deliverable:** `agent-orchestra` binary that can spawn and manage multiple agents via REST API.
+**Deliverable:** `mission-control` binary that can spawn and manage multiple agents via REST API.
 
 ---
 
@@ -146,7 +146,7 @@ Python Agent stdout
 **Wireframe:**
 ```
 ┌────────────────────────────────────────────────────────┐
-│  Agent Orchestra                    [+New Agent] [⚙️]  │
+│  MissionControl                     [+New Agent] [⚙️]  │
 ├────────────────────────────────────────────────────────┤
 │  Stats: 3 agents | 12.4k tokens | 2 working            │
 ├──────────────────────────┬─────────────────────────────┤
@@ -237,7 +237,7 @@ Python Agent stdout
 
 **Conductor Skill:**
 - A Claude Code skill that uses our orchestrator CLI
-- "Spin up a review team for this PR" → spawns agents via `agent-orchestra spawn`
+- "Spin up a review team for this PR" → spawns agents via `mission-control spawn`
 - Claude Code gains multi-agent powers through our infrastructure
 
 ---
@@ -265,7 +265,7 @@ Python Agent stdout
 ## File Structure
 
 ```
-agent-orchestra/
+mission-control/
 ├── SPEC.md
 │
 ├── agents/                     # Python

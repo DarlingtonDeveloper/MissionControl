@@ -1,4 +1,4 @@
-module github.com/mike/agent-orchestra
+module github.com/mike/mission-control
 
 go 1.25.3
 

@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mike/agent-orchestra/api"
-	"github.com/mike/agent-orchestra/manager"
-	"github.com/mike/agent-orchestra/ws"
+	"github.com/mike/mission-control/api"
+	"github.com/mike/mission-control/manager"
+	"github.com/mike/mission-control/ws"
 )
 
 func main() {
@@ -72,9 +72,9 @@ func main() {
 		}
 		fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
-<head><title>Agent Orchestra</title></head>
+<head><title>MissionControl</title></head>
 <body>
-<h1>Agent Orchestra</h1>
+<h1>MissionControl</h1>
 <p>Orchestrator is running.</p>
 <h2>Endpoints</h2>
 <ul>
@@ -97,7 +97,7 @@ curl -X POST http://localhost:%d/api/agents \
 
 	// Start server
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("Starting Agent Orchestra on http://localhost%s", addr)
+	log.Printf("Starting MissionControl on http://localhost%s", addr)
 	log.Printf("WebSocket available at ws://localhost%s/ws", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {

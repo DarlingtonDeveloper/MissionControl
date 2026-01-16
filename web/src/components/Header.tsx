@@ -22,7 +22,7 @@ export function Header({ status, onSpawnClick }: HeaderProps) {
     <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-semibold text-white">Agent Orchestra</h1>
+          <h1 className="text-xl font-semibold text-white">MissionControl</h1>
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <span className={`w-2 h-2 rounded-full ${statusColor}`} />
             <span>{status}</span>
