@@ -32,9 +32,16 @@
 - [x] Track PID, status, tokens per agent
 - [x] Environment passthrough (ANTHROPIC_API_KEY)
 - [x] REST API endpoints
+  - [x] POST /api/agents (spawn)
+  - [x] GET /api/agents (list)
+  - [x] DELETE /api/agents/:id (kill)
+  - [x] POST /api/agents/:id/message
 - [x] WebSocket event bus
+  - [x] Broadcast events to connected UIs
+  - [x] Receive commands from UI
 
 ### Rust Stream Parser
+- [x] Project setup (Cargo.toml)
 - [x] Parse Python agent format (JSON + plain text)
 - [x] Parse Claude Code stream-json format
 - [x] Normalize both to unified events
