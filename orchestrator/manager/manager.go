@@ -120,6 +120,9 @@ func (m *Manager) Spawn(req SpawnRequest) (*Agent, error) {
 		cmd.Dir = req.Workdir
 	}
 
+	// Pass through environment variables (includes ANTHROPIC_API_KEY)
+	cmd.Env = os.Environ()
+
 	// Set up pipes
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
