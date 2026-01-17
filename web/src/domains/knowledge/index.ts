@@ -1,2 +1,2 @@
 // Knowledge domain components
-// TODO: TokenUsage component
+export { TokenUsage } from './TokenUsage'

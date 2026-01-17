@@ -164,7 +164,7 @@ core/ffi/
 - [ ] Move existing components to appropriate domains
 - [x] Add TypeScript types for Phase, Task, Gate, etc.
 - [x] PhaseView component (workflow domain)
-- [ ] TokenUsage component (knowledge domain)
+- [x] TokenUsage component (knowledge domain)
 - [ ] GateApproval component (strategy domain)
 - [ ] WebSocket handlers for new events
 
