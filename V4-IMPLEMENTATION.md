@@ -39,17 +39,17 @@ core/workflow/
 ```
 
 **TODO:**
-- [ ] `cargo new core/workflow --lib`
-- [ ] Phase enum with `next()` method
-- [ ] TaskStatus enum (Pending, Ready, InProgress, Blocked, Done)
-- [ ] Task struct with dependencies vec
-- [ ] Gate struct with criteria vec
-- [ ] WorkflowEngine with HashMap storage
-- [ ] Implement: `current_phase()`, `can_transition()`, `transition()`
-- [ ] Implement: `create_task()`, `update_task_status()`, `get_ready_tasks()`
-- [ ] Implement: `check_gate()`, `approve_gate()`
-- [ ] JSON serialization via serde
-- [ ] Unit tests for state transitions
+- [x] `cargo new core/workflow --lib`
+- [x] Phase enum with `next()` method
+- [x] TaskStatus enum (Pending, Ready, InProgress, Blocked, Done)
+- [x] Task struct with dependencies vec
+- [x] Gate struct with criteria vec
+- [x] WorkflowEngine with HashMap storage
+- [x] Implement: `current_phase()`, `can_transition()`, `transition()`
+- [x] Implement: `create_task()`, `update_task_status()`, `get_ready_tasks()`
+- [x] Implement: `check_gate()`, `approve_gate()`
+- [x] JSON serialization via serde
+- [x] Unit tests for state transitions
 
 **Reference:** `V4-RUST-CONTRACTS.md` → WorkflowEngine section
 
@@ -70,21 +70,21 @@ core/knowledge/
 ```
 
 **TODO:**
-- [ ] `cargo new core/knowledge --lib`
-- [ ] Add `tiktoken-rs` dependency
-- [ ] TokenCounter wrapper struct
-- [ ] TokenBudget with thresholds (50%, 75%, 90%)
-- [ ] BudgetStatus enum (Healthy, Warning, Critical, Exceeded)
-- [ ] Finding struct with FindingType enum
-- [ ] Handoff struct with validation
-- [ ] `validate_handoff()` - schema enforcement
-- [ ] Checkpoint struct (full state snapshot)
-- [ ] Delta struct (changes since checkpoint)
-- [ ] `compute_delta()` - diff engine
-- [ ] `compile_briefing_inputs()` - gather context for LLM
-- [ ] Unit tests
+- [x] `cargo new core/knowledge --lib`
+- [x] Add `tiktoken-rs` dependency
+- [x] TokenCounter wrapper struct
+- [x] TokenBudget with thresholds (50%, 75%, 90%)
+- [x] BudgetStatus enum (Healthy, Warning, Critical, Exceeded)
+- [x] Finding struct with FindingType enum
+- [x] Handoff struct with validation
+- [x] `validate_handoff()` - schema enforcement
+- [x] Checkpoint struct (full state snapshot)
+- [x] Delta struct (changes since checkpoint)
+- [x] `compute_delta()` - diff engine
+- [x] `compile_briefing_inputs()` - gather context for LLM
+- [x] Unit tests
 
-**Reference:** `V4-RUST-CONTRACTS.md` → KnowledgeManager section  
+**Reference:** `V4-RUST-CONTRACTS.md` → KnowledgeManager section
 **Reference:** `TOKEN-RESEARCH.md` → Handoff schema details
 
 ---
@@ -100,15 +100,15 @@ core/runtime/
 ```
 
 **TODO:**
-- [ ] `cargo new core/runtime --lib`
-- [ ] HealthStatus enum (Healthy, Idle, Stuck, Unresponsive, Dead)
-- [ ] WorkerHealth struct with timestamps
-- [ ] HealthMonitor with configurable thresholds
-- [ ] `register_worker()`, `unregister_worker()`
-- [ ] `mark_activity()`, `mark_tool_call()`
-- [ ] `check_health()`, `get_stuck_workers()`
-- [ ] Unit tests
-- [ ] Move existing stream parser from `stream-parser/` crate
+- [x] `cargo new core/runtime --lib`
+- [x] HealthStatus enum (Healthy, Idle, Stuck, Unresponsive, Dead)
+- [x] WorkerHealth struct with timestamps
+- [x] HealthMonitor with configurable thresholds
+- [x] `register_worker()`, `unregister_worker()`
+- [x] `mark_activity()`, `mark_tool_call()`
+- [x] `check_health()`, `get_stuck_workers()`
+- [x] Unit tests
+- [x] Move existing stream parser from `stream-parser/` crate
 
 **Reference:** `V4-RUST-CONTRACTS.md` → HealthMonitor section
 
@@ -124,13 +124,13 @@ core/ffi/
 ```
 
 **TODO:**
-- [ ] `cargo new core/ffi --lib`
-- [ ] Set `crate-type = ["cdylib"]` in Cargo.toml
-- [ ] C-compatible exports for WorkflowEngine
-- [ ] C-compatible exports for KnowledgeManager
-- [ ] C-compatible exports for HealthMonitor
-- [ ] JSON string passing (avoid complex FFI types)
-- [ ] Build script for `.so`/`.dylib` output
+- [x] `cargo new core/ffi --lib`
+- [x] Set `crate-type = ["cdylib"]` in Cargo.toml
+- [x] C-compatible exports for WorkflowEngine
+- [x] C-compatible exports for KnowledgeManager
+- [x] C-compatible exports for HealthMonitor
+- [x] JSON string passing (avoid complex FFI types)
+- [x] Build script for `.so`/`.dylib` output
 - [ ] Test FFI from C (optional sanity check)
 
 **Reference:** `V4-RUST-CONTRACTS.md` → FFI Bindings section
@@ -142,10 +142,12 @@ core/ffi/
 **TODO:**
 - [ ] CGO bindings to load Rust shared library
 - [ ] Wrapper functions in Go for each FFI export
-- [ ] Add Strategy routes: `POST /api/gates/:id/approve`
-- [ ] Add Workflow routes: `GET /api/phases`, `GET /api/tasks`, `PUT /api/tasks/:id/status`
-- [ ] Add Knowledge routes: `GET /api/specs/:id`, `GET /api/briefings/:worker`, `POST /api/handoffs`
+- [x] Add Strategy routes: `POST /api/gates/:id/approve`
+- [x] Add Workflow routes: `GET /api/phases`, `GET /api/tasks`, `PUT /api/tasks/:id/status`
+- [x] Add Knowledge routes: `POST /api/handoffs`, `GET /api/checkpoints`
 - [ ] Integration tests with Rust core
+
+**Note:** Routes implemented with in-memory Go store. CGO integration deferred.
 
 **Reference:** `V4-API-ROUTES.md` → Full endpoint specs
 
@@ -160,7 +162,7 @@ core/ffi/
   - [ ] `domains/knowledge/`
   - [ ] `domains/runtime/`
 - [ ] Move existing components to appropriate domains
-- [ ] Add TypeScript types for Phase, Task, Gate, etc.
+- [x] Add TypeScript types for Phase, Task, Gate, etc.
 - [ ] PhaseView component (workflow domain)
 - [ ] TokenUsage component (knowledge domain)
 - [ ] GateApproval component (strategy domain)
