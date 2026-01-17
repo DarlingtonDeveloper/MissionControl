@@ -156,14 +156,14 @@ core/ffi/
 ### Phase 4: React Updates (Parallel with Phase 3)
 
 **TODO:**
-- [ ] Create `src/domains/` folder structure:
-  - [ ] `domains/strategy/`
-  - [ ] `domains/workflow/`
-  - [ ] `domains/knowledge/`
-  - [ ] `domains/runtime/`
+- [x] Create `src/domains/` folder structure:
+  - [x] `domains/strategy/`
+  - [x] `domains/workflow/`
+  - [x] `domains/knowledge/`
+  - [x] `domains/runtime/`
 - [ ] Move existing components to appropriate domains
 - [x] Add TypeScript types for Phase, Task, Gate, etc.
-- [ ] PhaseView component (workflow domain)
+- [x] PhaseView component (workflow domain)
 - [ ] TokenUsage component (knowledge domain)
 - [ ] GateApproval component (strategy domain)
 - [ ] WebSocket handlers for new events
