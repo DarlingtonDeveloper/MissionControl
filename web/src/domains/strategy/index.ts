@@ -1,2 +1,2 @@
 // Strategy domain components
-// TODO: GateApproval component
+export { GateApproval } from './GateApproval'

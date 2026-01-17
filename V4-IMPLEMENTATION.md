@@ -165,7 +165,7 @@ core/ffi/
 - [x] Add TypeScript types for Phase, Task, Gate, etc.
 - [x] PhaseView component (workflow domain)
 - [x] TokenUsage component (knowledge domain)
-- [ ] GateApproval component (strategy domain)
+- [x] GateApproval component (strategy domain)
 - [ ] WebSocket handlers for new events
 
 **Reference:** `V4-API-ROUTES.md` → WebSocket Events section
