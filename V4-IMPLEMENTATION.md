@@ -166,7 +166,7 @@ core/ffi/
 - [x] PhaseView component (workflow domain)
 - [x] TokenUsage component (knowledge domain)
 - [x] GateApproval component (strategy domain)
-- [ ] WebSocket handlers for new events
+- [x] WebSocket handlers for new events
 
 **Reference:** `V4-API-ROUTES.md` → WebSocket Events section
 
