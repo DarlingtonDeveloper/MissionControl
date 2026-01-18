@@ -43,7 +43,7 @@
 
 The brain of MissionControl. Make King actually orchestrate.
 
-### Phase 1: mc CLI Foundation
+### Phase 1: mc CLI Foundation ✅
 
 ```
 mc
@@ -59,30 +59,30 @@ mc
 └── serve      # Start Go bridge + UI
 ```
 
-**TODO:**
-- [ ] Create cmd/mc/ with cobra
-- [ ] `mc init` - Create .mission/ directory structure
-- [ ] `mc status` - Read and dump .mission/state/*.json
-- [ ] `mc phase` - Get current phase
-- [ ] `mc phase next` - Transition phase
-- [ ] `mc task create <name> --phase <p> --zone <z> --persona <p>`
-- [ ] `mc task list [--phase <p>]`
-- [ ] `mc task update <id> --status <s>`
-- [ ] `mc workers` - List active workers from state
-- [ ] `mc spawn <persona> <task> --zone <zone>` - Spawn Claude Code process
-- [ ] `mc kill <worker-id>` - Kill worker process
-- [ ] `mc handoff <file>` - Validate JSON, store in .mission/
-- [ ] `mc gate check <phase>` - Check gate criteria
-- [ ] `mc gate approve <phase>` - Approve and transition
+**DONE:**
+- [x] Create cmd/mc/ with cobra
+- [x] `mc init` - Create .mission/ directory structure
+- [x] `mc status` - Read and dump .mission/state/*.json
+- [x] `mc phase` - Get current phase
+- [x] `mc phase next` - Transition phase
+- [x] `mc task create <name> --phase <p> --zone <z> --persona <p>`
+- [x] `mc task list [--phase <p>]`
+- [x] `mc task update <id> --status <s>`
+- [x] `mc workers` - List active workers from state
+- [x] `mc spawn <persona> <task> --zone <zone>` - Spawn Claude Code process
+- [x] `mc kill <worker-id>` - Kill worker process
+- [x] `mc handoff <file>` - Validate JSON, store in .mission/
+- [x] `mc gate check <phase>` - Check gate criteria
+- [x] `mc gate approve <phase>` - Approve and transition
 - [ ] `mc serve` - Start Go bridge (WebSocket + file watcher)
 
-### Phase 2: .mission/ Structure
+### Phase 2: .mission/ Structure ✅
 
-**TODO:**
-- [ ] Define JSON schemas for state files
-- [ ] Template for CLAUDE.md (King prompt)
-- [ ] Templates for worker prompts (11 personas)
-- [ ] `mc init` creates full structure
+**DONE:**
+- [x] Define JSON schemas for state files
+- [x] Template for CLAUDE.md (King prompt)
+- [x] Templates for worker prompts (11 personas)
+- [x] `mc init` creates full structure
 
 **.mission/ layout:**
 ```
@@ -105,13 +105,13 @@ mc
     └── ... (11 total)
 ```
 
-### Phase 3: King CLAUDE.md
+### Phase 3: King CLAUDE.md ✅
 
-**TODO:**
-- [ ] Write King system prompt (~100 lines)
-- [ ] Document available mc commands
-- [ ] Explain workflow (phases, gates, tasks)
-- [ ] Define constraints (never code, always delegate)
+**DONE:**
+- [x] Write King system prompt (~100 lines)
+- [x] Document available mc commands
+- [x] Explain workflow (phases, gates, tasks)
+- [x] Define constraints (never code, always delegate)
 - [ ] Test King spawning workers via mc
 
 **Key sections:**
@@ -121,20 +121,20 @@ mc
 - Constraints (no coding, only coordinating)
 - How to read findings and synthesize
 
-### Phase 4: Worker Prompts
+### Phase 4: Worker Prompts ✅
 
-**TODO:**
-- [ ] Researcher prompt (Idea phase)
-- [ ] Designer prompt (Design phase)
-- [ ] Architect prompt (Design phase)
-- [ ] Developer prompt (Implement phase)
-- [ ] Debugger prompt (Implement phase)
-- [ ] Reviewer prompt (Verify phase)
-- [ ] Security prompt (Verify phase)
-- [ ] Tester prompt (Verify phase)
-- [ ] QA prompt (Verify phase)
-- [ ] Docs prompt (Document phase)
-- [ ] DevOps prompt (Release phase)
+**DONE:**
+- [x] Researcher prompt (Idea phase)
+- [x] Designer prompt (Design phase)
+- [x] Architect prompt (Design phase)
+- [x] Developer prompt (Implement phase)
+- [x] Debugger prompt (Implement phase)
+- [x] Reviewer prompt (Verify phase)
+- [x] Security prompt (Verify phase)
+- [x] Tester prompt (Verify phase)
+- [x] QA prompt (Verify phase)
+- [x] Docs prompt (Document phase)
+- [x] DevOps prompt (Release phase)
 
 **Each prompt includes:**
 - Role and focus
@@ -142,17 +142,17 @@ mc
 - Handoff JSON format
 - `mc handoff` instruction
 
-### Phase 5: Go Bridge Updates
+### Phase 5: Go Bridge Updates ✅
 
-**TODO:**
-- [ ] Spawn King as Claude Code process
-- [ ] Route UI chat to King stdin
-- [ ] Spawn workers as Claude Code processes
-- [ ] Relay agent stdout to WebSocket
-- [ ] File watcher on .mission/state/ → WebSocket events
-- [ ] REST endpoint: POST /api/gates/:phase/approve
+**DONE:**
+- [x] Spawn King as Claude Code process
+- [x] Route UI chat to King stdin
+- [x] Spawn workers as Claude Code processes
+- [x] Relay agent stdout to WebSocket
+- [x] File watcher on .mission/state/ → WebSocket events
+- [x] REST endpoint: POST /api/mission/gates/:phase/approve
 
-**WebSocket events:**
+**WebSocket events (implemented):**
 ```
 { type: "phase_changed", phase: "design" }
 { type: "task_created", task: Task }
@@ -161,6 +161,10 @@ mc
 { type: "worker_completed", worker_id: string }
 { type: "findings_ready", task_id: string }
 { type: "gate_ready", phase: string }
+{ type: "gate_approved", phase: string }
+{ type: "king_output", data: object }
+{ type: "king_status", is_running: boolean }
+{ type: "mission_state", state: object }
 ```
 
 ### Phase 6: Rust Integration
