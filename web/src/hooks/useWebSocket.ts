@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../stores/useStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useKnowledgeStore } from '../stores/useKnowledgeStore'
+import { useMissionStore, type V5Event } from '../stores/useMissionStore'
 import type { Agent, Zone, ConversationMessage, ToolCall } from '../types'
 import type { V4Event } from '../types/v4'
 
@@ -354,6 +355,55 @@ export function useWebSocket() {
             addMessage(agentId!, message)
           }
         }
+        break
+
+      // ============================================================
+      // V5 Mission Events
+      // ============================================================
+
+      case 'mission_state':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'worker_spawned':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'worker_completed':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'findings_ready':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'gate_ready':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'gate_approved':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'king_output':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        // Also add to king conversation
+        if (data.data && typeof data.data === 'object') {
+          const kingData = data.data as Record<string, unknown>
+          if (kingData.content) {
+            addKingMessage({
+              role: 'assistant',
+              content: kingData.content as string,
+              timestamp: Date.now(),
+              thinking: kingData.thinking as string | undefined,
+              actions: kingData.actions as import('../types').KingAction[] | undefined
+            })
+          }
+        }
+        break
+
+      case 'king_status':
+        useMissionStore.getState().handleEvent(data as V5Event)
         break
 
       default:

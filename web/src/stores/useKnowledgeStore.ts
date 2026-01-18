@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type {
   TokenBudget,
-  BudgetStatus,
   CheckpointSummary,
   Checkpoint,
   Finding,

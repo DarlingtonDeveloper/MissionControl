@@ -1,13 +1,26 @@
 # Rust
 stream-parser/target/
+core/target/
 
 # Go
 orchestrator/mission-control
+cmd/mc/mc
 
 # Python
 __pycache__/
 *.pyc
 .venv/
+
+# Node
+web/node_modules/
+web/dist/
+
+# Build artifacts
+dist/
+*.tar.gz
+
+# Runtime
+.mission/
 
 # IDE
 .idea/
@@ -16,4 +29,3 @@ __pycache__/
 
 # OS
 .DS_Store
-cmd/mc/mc

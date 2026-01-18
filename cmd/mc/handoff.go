@@ -4,13 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 )
 
+var useRustValidation bool
+
 func init() {
+	handoffCmd.Flags().BoolVar(&useRustValidation, "rust", false, "Use mc-core (Rust) for validation")
 	rootCmd.AddCommand(handoffCmd)
 }
 
@@ -56,6 +60,13 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Use Rust validation if requested
+	if useRustValidation {
+		if err := validateHandoffWithRust(filePath); err != nil {
+			return err
+		}
+	}
+
 	// Read handoff file
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -68,7 +79,7 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 
-	// Validate required fields
+	// Validate required fields (basic validation always runs)
 	if err := validateHandoff(&handoff); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
@@ -159,4 +170,88 @@ func validateHandoff(h *Handoff) error {
 	}
 
 	return nil
+}
+
+// validateHandoffWithRust uses mc-core for enhanced validation
+func validateHandoffWithRust(filePath string) error {
+	// Try to find mc-core binary
+	mcCorePath := findMcCore()
+	if mcCorePath == "" {
+		return fmt.Errorf("mc-core binary not found (hint: build with 'cargo build -p mc-core --release')")
+	}
+
+	cmd := exec.Command(mcCorePath, "validate-handoff", filePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Parse validation result for better error message
+		var result struct {
+			Valid    bool     `json:"valid"`
+			Errors   []string `json:"errors"`
+			Warnings []string `json:"warnings"`
+		}
+		if jsonErr := json.Unmarshal(output, &result); jsonErr == nil {
+			if len(result.Errors) > 0 {
+				return fmt.Errorf("validation errors:\n  - %s", joinStrings(result.Errors, "\n  - "))
+			}
+		}
+		return fmt.Errorf("mc-core validation failed: %s", string(output))
+	}
+
+	// Print warnings if any
+	var result struct {
+		Valid    bool     `json:"valid"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(output, &result); err == nil && len(result.Warnings) > 0 {
+		fmt.Printf("Warnings:\n  - %s\n", joinStrings(result.Warnings, "\n  - "))
+	}
+
+	return nil
+}
+
+// findMcCore locates the mc-core binary
+func findMcCore() string {
+	// Check common locations
+	paths := []string{
+		"mc-core",
+		"/usr/local/bin/mc-core",
+		"/opt/homebrew/bin/mc-core",
+	}
+
+	// Also check relative to current executable
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		paths = append(paths, filepath.Join(dir, "mc-core"))
+	}
+
+	// Check workspace target directory
+	if cwd, err := os.Getwd(); err == nil {
+		paths = append(paths,
+			filepath.Join(cwd, "core", "target", "release", "mc-core"),
+			filepath.Join(cwd, "core", "target", "debug", "mc-core"),
+		)
+	}
+
+	for _, p := range paths {
+		if _, err := exec.LookPath(p); err == nil {
+			return p
+		}
+		// Also check if file exists directly
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	return ""
+}
+
+func joinStrings(strs []string, sep string) string {
+	result := ""
+	for i, s := range strs {
+		if i > 0 {
+			result += sep
+		}
+		result += s
+	}
+	return result
 }

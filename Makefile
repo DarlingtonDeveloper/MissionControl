@@ -1,0 +1,107 @@
+# MissionControl Makefile
+VERSION ?= 0.5.0
+PLATFORMS := darwin-amd64 darwin-arm64 linux-amd64 linux-arm64
+DIST_DIR := dist
+
+.PHONY: all build build-mc build-mc-core build-orchestrator build-web clean release test
+
+all: build
+
+# Build all components
+build: build-mc build-mc-core build-orchestrator build-web
+
+# Build mc CLI (Go)
+build-mc:
+	@echo "Building mc CLI..."
+	cd cmd/mc && go build -ldflags "-s -w -X main.version=$(VERSION)" -o ../../$(DIST_DIR)/mc .
+
+# Build mc-core (Rust)
+build-mc-core:
+	@echo "Building mc-core..."
+	cd core && cargo build --release -p mc-core
+	cp core/target/release/mc-core $(DIST_DIR)/mc-core
+
+# Build orchestrator (Go)
+build-orchestrator:
+	@echo "Building orchestrator..."
+	cd orchestrator && go build -ldflags "-s -w" -o ../$(DIST_DIR)/mc-orchestrator .
+
+# Build web UI
+build-web:
+	@echo "Building web UI..."
+	cd web && npm install && npm run build
+
+# Run all tests
+test: test-go test-rust test-web
+
+test-go:
+	@echo "Running Go tests..."
+	cd cmd/mc && go test -v ./...
+	cd orchestrator && go test -v ./...
+
+test-rust:
+	@echo "Running Rust tests..."
+	cd core && cargo test
+
+test-web:
+	@echo "Running web tests..."
+	cd web && npm test
+
+# Clean build artifacts
+clean:
+	rm -rf $(DIST_DIR)
+	rm -rf core/target
+	rm -rf web/dist
+	rm -rf web/node_modules
+
+# Create distribution directory
+$(DIST_DIR):
+	mkdir -p $(DIST_DIR)
+
+# Build release for a specific platform
+release-darwin-amd64: $(DIST_DIR)
+	@echo "Building for darwin/amd64..."
+	GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST_DIR)/darwin-amd64/mc ./cmd/mc
+	GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o $(DIST_DIR)/darwin-amd64/mc-orchestrator ./orchestrator
+	cd core && cargo build --release -p mc-core --target x86_64-apple-darwin || echo "Cross-compile requires target: rustup target add x86_64-apple-darwin"
+	cp core/target/x86_64-apple-darwin/release/mc-core $(DIST_DIR)/darwin-amd64/ 2>/dev/null || cp core/target/release/mc-core $(DIST_DIR)/darwin-amd64/
+
+release-darwin-arm64: $(DIST_DIR)
+	@echo "Building for darwin/arm64..."
+	GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST_DIR)/darwin-arm64/mc ./cmd/mc
+	GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o $(DIST_DIR)/darwin-arm64/mc-orchestrator ./orchestrator
+	cd core && cargo build --release -p mc-core --target aarch64-apple-darwin || echo "Cross-compile requires target: rustup target add aarch64-apple-darwin"
+	cp core/target/aarch64-apple-darwin/release/mc-core $(DIST_DIR)/darwin-arm64/ 2>/dev/null || cp core/target/release/mc-core $(DIST_DIR)/darwin-arm64/
+
+release-linux-amd64: $(DIST_DIR)
+	@echo "Building for linux/amd64..."
+	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST_DIR)/linux-amd64/mc ./cmd/mc
+	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o $(DIST_DIR)/linux-amd64/mc-orchestrator ./orchestrator
+	cd core && cargo build --release -p mc-core --target x86_64-unknown-linux-gnu || echo "Cross-compile requires target: rustup target add x86_64-unknown-linux-gnu"
+
+# Package releases as tarballs
+package: $(DIST_DIR)
+	@for platform in $(PLATFORMS); do \
+		if [ -d "$(DIST_DIR)/$$platform" ]; then \
+			echo "Packaging $$platform..."; \
+			tar -czvf $(DIST_DIR)/mission-control-$(VERSION)-$$platform.tar.gz -C $(DIST_DIR)/$$platform .; \
+		fi \
+	done
+
+# Full release build
+release: clean $(DIST_DIR) release-darwin-arm64 release-darwin-amd64 package
+	@echo "Release artifacts created in $(DIST_DIR)/"
+	@ls -la $(DIST_DIR)/*.tar.gz 2>/dev/null || echo "No packages created yet"
+
+# Install locally (macOS)
+install: build
+	@echo "Installing to /usr/local/bin..."
+	cp $(DIST_DIR)/mc /usr/local/bin/
+	cp $(DIST_DIR)/mc-core /usr/local/bin/
+	cp $(DIST_DIR)/mc-orchestrator /usr/local/bin/
+	@echo "Installed successfully!"
+
+# Development: watch and rebuild
+dev:
+	@echo "Starting development mode..."
+	@echo "Run 'make build' in another terminal after changes"

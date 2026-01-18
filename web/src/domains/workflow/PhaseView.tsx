@@ -101,7 +101,7 @@ interface PhaseTimelineProps {
   onSelectPhase: (phase: Phase) => void
 }
 
-function PhaseTimeline({ phases, currentPhase, selectedPhase, onSelectPhase }: PhaseTimelineProps) {
+function PhaseTimeline({ phases, currentPhase: _currentPhase, selectedPhase, onSelectPhase }: PhaseTimelineProps) {
   return (
     <div className="flex items-center gap-1 p-3 bg-gray-850 border-b border-gray-800">
       {phases.map((p, i) => (

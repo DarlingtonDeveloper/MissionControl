@@ -20,9 +20,10 @@ import { toast } from './stores/useToast'
 import { PhaseView } from './domains/workflow/PhaseView'
 import { TokenUsage } from './domains/knowledge/TokenUsage'
 import { GateApproval } from './domains/strategy/GateApproval'
+import { FindingsViewer } from './components/FindingsViewer'
 import type { Zone, Agent } from './types'
 
-type ViewMode = 'agents' | 'workflow' | 'tokens' | 'gates'
+type ViewMode = 'agents' | 'workflow' | 'tokens' | 'gates' | 'findings'
 
 function App() {
   // View mode for v4 panels
@@ -210,7 +211,7 @@ function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* View mode tabs */}
           <div className="flex items-center gap-1 px-3 py-2 bg-gray-900 border-b border-gray-800">
-            {(['agents', 'workflow', 'tokens', 'gates'] as ViewMode[]).map((mode) => (
+            {(['agents', 'workflow', 'tokens', 'gates', 'findings'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
@@ -226,6 +227,7 @@ function App() {
                 {mode === 'workflow' && '📋 Workflow'}
                 {mode === 'tokens' && '🪙 Tokens'}
                 {mode === 'gates' && '🚦 Gates'}
+                {mode === 'findings' && '📝 Findings'}
               </button>
             ))}
           </div>
@@ -249,6 +251,10 @@ function App() {
               <TokenUsage />
             ) : viewMode === 'gates' ? (
               <GateApproval />
+            ) : viewMode === 'findings' ? (
+              <div className="p-4 overflow-y-auto h-full">
+                <FindingsViewer />
+              </div>
             ) : null}
           </div>
         </div>

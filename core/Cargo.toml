@@ -5,6 +5,7 @@ members = [
     "knowledge",
     "runtime",
     "ffi",
+    "mc-core",
 ]
 
 [workspace.package]
