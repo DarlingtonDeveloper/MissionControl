@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -9,8 +10,10 @@ import (
 	"path/filepath"
 
 	"github.com/mike/mission-control/api"
+	"github.com/mike/mission-control/bridge"
 	"github.com/mike/mission-control/manager"
 	"github.com/mike/mission-control/v4"
+	"github.com/mike/mission-control/watcher"
 	"github.com/mike/mission-control/ws"
 )
 
@@ -18,7 +21,16 @@ func main() {
 	// Parse flags
 	port := flag.Int("port", 8080, "Port to listen on")
 	agentsDir := flag.String("agents", "", "Path to agents directory")
+	workDir := flag.String("workdir", "", "Working directory with .mission/")
 	flag.Parse()
+
+	// Determine working directory
+	if *workDir == "" {
+		cwd, _ := os.Getwd()
+		*workDir = cwd
+	}
+	absWorkDir, _ := filepath.Abs(*workDir)
+	missionDir := filepath.Join(absWorkDir, ".mission")
 
 	// Determine agents directory
 	if *agentsDir == "" {
@@ -45,6 +57,7 @@ func main() {
 
 	absAgentsDir, _ := filepath.Abs(*agentsDir)
 	log.Printf("Agents directory: %s", absAgentsDir)
+	log.Printf("Working directory: %s", absWorkDir)
 
 	// Create manager
 	mgr := manager.NewManager(absAgentsDir)
@@ -52,6 +65,42 @@ func main() {
 	// Create WebSocket hub
 	hub := ws.NewHub(mgr)
 	go hub.Run()
+
+	// Create King bridge
+	king := bridge.NewKing(absWorkDir)
+	hub.SetKing(king)
+
+	// Start listening for King events and broadcast to WebSocket
+	go func() {
+		for event := range king.Events() {
+			data, _ := json.Marshal(event)
+			hub.Notify(json.RawMessage(data))
+		}
+	}()
+
+	// Create and start mission watcher if .mission/ exists
+	var missionWatcher *watcher.Watcher
+	if _, err := os.Stat(missionDir); err == nil {
+		missionWatcher = watcher.NewWatcher(missionDir)
+		if err := missionWatcher.Start(); err != nil {
+			log.Printf("Warning: failed to start mission watcher: %v", err)
+		} else {
+			// Set mission state provider
+			hub.SetMissionStateProvider(func() interface{} {
+				return missionWatcher.GetCurrentState()
+			})
+
+			// Broadcast watcher events to WebSocket
+			go func() {
+				for event := range missionWatcher.Events() {
+					data, _ := json.Marshal(event)
+					hub.Notify(json.RawMessage(data))
+				}
+			}()
+		}
+	} else {
+		log.Printf("No .mission/ directory found - run 'mc init' to create one")
+	}
 
 	// Create v4 store and handler
 	v4Store := v4.NewStore()
@@ -70,8 +119,14 @@ func main() {
 	// Create API handler
 	apiHandler := api.NewHandler(mgr)
 
+	// Create v5 API handler
+	v5Handler := api.NewV5Handler(king, absWorkDir)
+
 	// Set up routes
 	mux := http.NewServeMux()
+
+	// v5 API routes (King and gates)
+	v5Handler.RegisterRoutes(mux)
 
 	// v4 API routes (register first for specificity)
 	v4Handler.RegisterRoutes(mux)
@@ -127,6 +182,35 @@ func main() {
 <ul>
 <li>GET /api/gates/:id - Get gate status</li>
 <li>POST /api/gates/:id/approve - Approve gate</li>
+</ul>
+
+<h2>v5 King Endpoints</h2>
+<ul>
+<li>POST /api/king/start - Start King process</li>
+<li>POST /api/king/stop - Stop King process</li>
+<li><a href="/api/king/status">GET /api/king/status</a> - King status</li>
+<li>POST /api/king/message - Send message to King</li>
+<li>GET /api/mission/gates/:phase - Check gate status</li>
+<li>POST /api/mission/gates/:phase/approve - Approve gate</li>
+</ul>
+
+<h2>WebSocket Events (v5)</h2>
+<ul>
+<li>mission_state - Initial mission state sync</li>
+<li>king_status - King running status</li>
+<li>phase_changed - Phase transitioned</li>
+<li>task_created - New task created</li>
+<li>task_updated - Task status changed</li>
+<li>worker_spawned - Worker started</li>
+<li>worker_completed - Worker finished</li>
+<li>gate_ready - Gate criteria met</li>
+<li>gate_approved - Gate approved</li>
+<li>findings_ready - New findings available</li>
+</ul>
+
+<h2>WebSocket Commands (v5)</h2>
+<ul>
+<li>king_message - Send message to King</li>
 </ul>
 
 <h2>Spawn Example</h2>

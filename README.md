@@ -16,20 +16,18 @@ Inspired by [Vibecraft](https://vibecraft.dev), [Ralv](https://ralv.dev), and [G
 └───────────────────────┬─────────────────────────────────────┘
                         │ WebSocket
 ┌───────────────────────▼─────────────────────────────────────┐
-│                   Go API Layer                               │
-│   Agents │ Zones │ King │ (v4: Workflow │ Knowledge)        │
+│                   Go Bridge (v5)                             │
+│   King Process │ Watcher │ mc CLI │ WebSocket Hub           │
 └───────────────────────┬─────────────────────────────────────┘
-                        │ (v4: FFI)
-┌───────────────────────▼─────────────────────────────────────┐
-│               Rust Core (v4 - planned)                       │
-│   Workflow Engine │ Knowledge Manager │ Health Monitor       │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
+                        │ spawns Claude Code
          ┌──────────────┼──────────────┐
          ▼              ▼              ▼
       King           Worker         Worker
-     (Opus)         (Sonnet)        (Haiku)
+  (Claude Code)   (Claude Code)  (Claude Code)
+  .mission/CLAUDE.md  persona prompt   persona prompt
 ```
+
+**Key insight:** King IS a Claude Code session with a good system prompt. Go bridge spawns processes and relays events — no custom LLM API calls.
 
 ## Key Concepts
 
@@ -55,15 +53,33 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
 | v1 | ✅ Done | Python agent fundamentals |
 | v2 | ✅ Done | Go orchestrator + Rust parser |
 | v3 | ✅ Done | Full 2D dashboard (81 tests) |
-| v4 | 🔄 Current | Architecture foundation (Rust core) |
-| v5 | 📋 Planned | King agent + workflow system |
+| v4 | ✅ Done | Rust core (workflow, knowledge, health) |
+| v5 | 🔄 Current | King orchestration + mc CLI |
 | v6 | 📋 Planned | 3D visualization + polish |
+
+## v5 Features (Current)
+
+- **mc CLI** — Command-line tool for MissionControl orchestration
+  - `mc init` — Create `.mission/` scaffold with King + worker prompts
+  - `mc status` — JSON dump of phase, tasks, workers, gates
+  - `mc phase` — Get/set current workflow phase
+  - `mc task` — Create, list, update tasks
+  - `mc spawn` — Spawn Claude Code worker process
+  - `mc kill` — Kill worker process
+  - `mc handoff` — Validate and store worker handoff
+  - `mc gate` — Check/approve phase gates
+  - `mc workers` — List active workers with health check
+- **Go Bridge** — WebSocket events for real-time state sync
+  - File watcher on `.mission/state/`
+  - King process management (start, stop, message)
+  - Automatic event broadcast on state changes
+- **King as Claude Code** — King IS a Claude Code session with CLAUDE.md prompt
 
 ## v3 Features
 
 - **Zone System** — Create, edit, split, merge zones; move agents between zones
 - **Persona System** — 4 default personas + custom creation
-- **King Mode** — UI shell with KingPanel, TeamOverview (full logic in v5)
+- **King Mode** — UI shell with KingPanel, TeamOverview
 - **Attention System** — Notifications with quick response buttons
 - **Settings** — General, Personas, Shortcuts tabs
 - **Keyboard Shortcuts** — ⌘N spawn, ⌘K kill, ⌘⇧K king mode, etc.
@@ -102,29 +118,64 @@ python3 v2_todo.py "build a calculator"
 python3 v3_subagent.py "build a todo app with tests"
 ```
 
+### mc CLI (v5)
+
+```bash
+# Build the mc CLI
+cd cmd/mc
+go build -o mc .
+
+# Initialize a project
+cd /path/to/your/project
+mc init
+
+# Check status
+mc status
+
+# Create a task
+mc task create "Build login form" --phase implement --zone frontend --persona developer
+
+# Check gate status
+mc gate check idea
+
+# Approve gate and transition
+mc gate approve idea
+
+# List workers
+mc workers
+```
+
 ### Orchestrator (v2+)
 
 ```bash
-# Start orchestrator
+# Start orchestrator with mission support
 cd orchestrator
-go run .
+go run . --workdir /path/to/project
+
+# Start King via API
+curl -X POST localhost:8080/api/king/start
+
+# Send message to King
+curl -X POST localhost:8080/api/king/message \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Build a todo app"}'
+
+# Check King status
+curl localhost:8080/api/king/status
+
+# Check gate via API
+curl localhost:8080/api/mission/gates/idea
+
+# Approve gate via API
+curl -X POST localhost:8080/api/mission/gates/idea/approve
 
 # Spawn agents via API
-curl -X POST localhost:8080/api/agents \
-  -H "Content-Type: application/json" \
-  -d '{"type": "python", "agent": "v1_basic", "task": "create hello.py"}'
-
 curl -X POST localhost:8080/api/agents \
   -H "Content-Type: application/json" \
   -d '{"type": "claude-code", "task": "review hello.py", "workingDir": "."}'
 
 # List agents
 curl localhost:8080/api/agents
-
-# Create zone
-curl -X POST localhost:8080/api/zones \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Frontend", "color": "#3b82f6"}'
 ```
 
 ### Web Dashboard (v3)
@@ -176,9 +227,34 @@ PUT    /api/zones/:id           # Update zone
 DELETE /api/zones/:id           # Delete zone
 ```
 
-### King
+### King (v5)
 ```
+POST   /api/king/start          # Start King process
+POST   /api/king/stop           # Stop King process
+GET    /api/king/status         # Check if King is running
 POST   /api/king/message        # Send message to King
+```
+
+### Mission Gates (v5)
+```
+GET    /api/mission/gates/:phase          # Check gate status
+POST   /api/mission/gates/:phase/approve  # Approve gate
+```
+
+### WebSocket Events (v5)
+```
+mission_state      # Initial state sync
+king_status        # King running status
+phase_changed      # Phase transitioned
+task_created       # New task created
+task_updated       # Task status changed
+worker_spawned     # Worker started
+worker_completed   # Worker finished
+gate_ready         # Gate criteria met
+gate_approved      # Gate approved
+findings_ready     # New findings available
+king_output        # King process output
+king_error         # King process error
 ```
 
 ## Worker Personas

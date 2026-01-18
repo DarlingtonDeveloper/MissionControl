@@ -23,6 +23,12 @@ type Client struct {
 	send chan []byte
 }
 
+// KingSender interface for sending messages to King
+type KingSender interface {
+	SendMessage(message string) error
+	IsRunning() bool
+}
+
 // Hub maintains the set of active clients and broadcasts events
 type Hub struct {
 	clients    map[*Client]bool
@@ -34,6 +40,12 @@ type Hub struct {
 
 	// v4StateProvider provides v4 state for initial sync
 	v4StateProvider func() interface{}
+
+	// missionStateProvider provides mission state for initial sync
+	missionStateProvider func() interface{}
+
+	// king is the King process sender
+	king KingSender
 }
 
 // NewHub creates a new Hub
@@ -131,6 +143,29 @@ func (h *Hub) sendInitialState(client *Client) {
 			client.send <- v4Data
 		}
 	}
+
+	// Send mission state if provider is set
+	if h.missionStateProvider != nil {
+		missionState := h.missionStateProvider()
+		if missionState != nil {
+			missionEvent := map[string]interface{}{
+				"type":  "mission_state",
+				"state": missionState,
+			}
+			missionData, _ := json.Marshal(missionEvent)
+			client.send <- missionData
+		}
+	}
+
+	// Send King status
+	if h.king != nil {
+		kingEvent := map[string]interface{}{
+			"type":       "king_status",
+			"is_running": h.king.IsRunning(),
+		}
+		kingData, _ := json.Marshal(kingEvent)
+		client.send <- kingData
+	}
 }
 
 // Notify broadcasts an event to all connected clients (implements v4.EventNotifier)
@@ -146,6 +181,16 @@ func (h *Hub) Notify(event interface{}) {
 // SetV4StateProvider sets the function to get v4 state for initial sync
 func (h *Hub) SetV4StateProvider(provider func() interface{}) {
 	h.v4StateProvider = provider
+}
+
+// SetMissionStateProvider sets the function to get mission state for initial sync
+func (h *Hub) SetMissionStateProvider(provider func() interface{}) {
+	h.missionStateProvider = provider
+}
+
+// SetKing sets the King process sender
+func (h *Hub) SetKing(king KingSender) {
+	h.king = king
 }
 
 // HandleWebSocket handles WebSocket connections
@@ -323,6 +368,31 @@ func (c *Client) handleCommand(message []byte) {
 	case "request_sync":
 		// Send full state to this client
 		c.hub.sendInitialState(c)
+
+	case "king_message":
+		// Send a message to King
+		var payload struct {
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+			log.Printf("Invalid king_message command: %v", err)
+			return
+		}
+		if c.hub.king == nil {
+			log.Printf("King not configured")
+			return
+		}
+		if !c.hub.king.IsRunning() {
+			log.Printf("King is not running")
+			return
+		}
+		if err := c.hub.king.SendMessage(payload.Content); err != nil {
+			log.Printf("Failed to send message to King: %v", err)
+		}
+
+	case "start_king":
+		// Request to start King - handled by API endpoint
+		log.Printf("start_king command received - use POST /api/king/start instead")
 
 	default:
 		log.Printf("Unknown command type: %s", cmd.Type)
