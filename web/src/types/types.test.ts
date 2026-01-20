@@ -13,8 +13,8 @@ describe('Types', () => {
   })
 
   describe('DEFAULT_PERSONAS', () => {
-    it('should have at least one default persona', () => {
-      expect(DEFAULT_PERSONAS.length).toBeGreaterThan(0)
+    it('should have all 11 workflow personas', () => {
+      expect(DEFAULT_PERSONAS.length).toBe(11)
     })
 
     it('should have required properties on each persona', () => {
@@ -23,6 +23,9 @@ describe('Types', () => {
         expect(persona.name).toBeDefined()
         expect(persona.description).toBeDefined()
         expect(persona.color).toBeDefined()
+        expect(persona.phase).toBeDefined()
+        expect(typeof persona.enabled).toBe('boolean')
+        expect(typeof persona.isBuiltin).toBe('boolean')
         expect(Array.isArray(persona.tools)).toBe(true)
         expect(Array.isArray(persona.skills)).toBe(true)
         expect(persona.systemPrompt).toBeDefined()
@@ -33,6 +36,74 @@ describe('Types', () => {
       const ids = DEFAULT_PERSONAS.map(p => p.id)
       const uniqueIds = [...new Set(ids)]
       expect(uniqueIds.length).toBe(ids.length)
+    })
+
+    it('should have all expected persona IDs', () => {
+      const expectedIds = [
+        'researcher', 'designer', 'architect', 'developer', 'debugger',
+        'reviewer', 'security', 'tester', 'qa', 'docs', 'devops'
+      ]
+      const actualIds = DEFAULT_PERSONAS.map(p => p.id)
+      expectedIds.forEach(id => {
+        expect(actualIds).toContain(id)
+      })
+    })
+
+    it('should have personas for each workflow phase', () => {
+      const phases = DEFAULT_PERSONAS.map(p => p.phase)
+      expect(phases).toContain('idea')
+      expect(phases).toContain('design')
+      expect(phases).toContain('implement')
+      expect(phases).toContain('verify')
+      expect(phases).toContain('document')
+      expect(phases).toContain('release')
+    })
+
+    it('should have correct phase assignments', () => {
+      const phaseMap: Record<string, string> = {
+        researcher: 'idea',
+        designer: 'design',
+        architect: 'design',
+        developer: 'implement',
+        debugger: 'implement',
+        reviewer: 'verify',
+        security: 'verify',
+        tester: 'verify',
+        qa: 'verify',
+        docs: 'document',
+        devops: 'release'
+      }
+      DEFAULT_PERSONAS.forEach(persona => {
+        expect(persona.phase).toBe(phaseMap[persona.id])
+      })
+    })
+
+    it('should have security, qa, and devops disabled by default', () => {
+      const security = DEFAULT_PERSONAS.find(p => p.id === 'security')
+      const qa = DEFAULT_PERSONAS.find(p => p.id === 'qa')
+      const devops = DEFAULT_PERSONAS.find(p => p.id === 'devops')
+
+      expect(security?.enabled).toBe(false)
+      expect(qa?.enabled).toBe(false)
+      expect(devops?.enabled).toBe(false)
+    })
+
+    it('should mark all default personas as builtin', () => {
+      DEFAULT_PERSONAS.forEach(persona => {
+        expect(persona.isBuiltin).toBe(true)
+      })
+    })
+
+    it('should have at least one tool per persona', () => {
+      DEFAULT_PERSONAS.forEach(persona => {
+        expect(persona.tools.length).toBeGreaterThan(0)
+      })
+    })
+
+    it('should have at least one skill per persona', () => {
+      DEFAULT_PERSONAS.forEach(persona => {
+        expect(persona.skills.length).toBeGreaterThan(0)
+      })
     })
   })
 
@@ -96,14 +167,38 @@ describe('Types', () => {
         name: 'Custom Persona',
         description: 'A custom persona for testing',
         color: '#ff0000',
+        phase: 'implement',
+        enabled: true,
         tools: ['read', 'write', 'bash'],
         skills: ['testing', 'debugging'],
-        systemPrompt: 'You are a test agent.'
+        systemPrompt: 'You are a test agent.',
+        isBuiltin: false
       }
 
       expect(persona.id).toBe('custom')
+      expect(persona.phase).toBe('implement')
+      expect(persona.enabled).toBe(true)
+      expect(persona.isBuiltin).toBe(false)
       expect(persona.tools).toContain('read')
       expect(persona.skills).toContain('testing')
+    })
+
+    it('should create a valid builtin persona object', () => {
+      const persona: Persona = {
+        id: 'developer',
+        name: 'Developer',
+        description: 'Production code and tests',
+        color: '#3b82f6',
+        phase: 'implement',
+        enabled: true,
+        tools: ['read', 'write', 'edit', 'bash'],
+        skills: ['implementation', 'testing'],
+        systemPrompt: 'You are a Developer.',
+        isBuiltin: true
+      }
+
+      expect(persona.isBuiltin).toBe(true)
+      expect(persona.phase).toBe('implement')
     })
   })
 

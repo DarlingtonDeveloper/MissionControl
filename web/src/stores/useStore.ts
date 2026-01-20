@@ -394,6 +394,78 @@ export async function respondToAttention(agentId: string, response: string): Pro
   }
 }
 
+// Persona API types
+export interface PersonaApiResponse {
+  id: string
+  enabled: boolean
+  hasPrompt: boolean
+}
+
+export interface PersonaPromptResponse {
+  id: string
+  content: string
+}
+
+// Fetch persona configurations for a project
+export async function fetchProjectPersonas(projectPath: string): Promise<PersonaApiResponse[]> {
+  const encodedPath = encodeURIComponent(projectPath)
+  const res = await fetch(`${API_BASE}/projects/${encodedPath}/personas`)
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  const data = await res.json()
+  return data.personas
+}
+
+// Update persona enabled state for a project
+export async function updateProjectPersona(
+  projectPath: string,
+  personaId: string,
+  updates: { enabled?: boolean }
+): Promise<PersonaApiResponse> {
+  const encodedPath = encodeURIComponent(projectPath)
+  const res = await fetch(`${API_BASE}/projects/${encodedPath}/personas/${personaId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  return res.json()
+}
+
+// Fetch persona prompt content
+export async function fetchPersonaPrompt(projectPath: string, personaId: string): Promise<string> {
+  const encodedPath = encodeURIComponent(projectPath)
+  const res = await fetch(`${API_BASE}/projects/${encodedPath}/personas/${personaId}/prompt`)
+  if (!res.ok) {
+    if (res.status === 404) {
+      return '' // No custom prompt
+    }
+    throw new Error(await res.text())
+  }
+  const data: PersonaPromptResponse = await res.json()
+  return data.content
+}
+
+// Update persona prompt content
+export async function updatePersonaPrompt(
+  projectPath: string,
+  personaId: string,
+  content: string
+): Promise<void> {
+  const encodedPath = encodeURIComponent(projectPath)
+  const res = await fetch(`${API_BASE}/projects/${encodedPath}/personas/${personaId}/prompt`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+}
+
 // Normalize agent data from backend to match our frontend types
 function normalizeAgent(backendAgent: Record<string, unknown>): Agent {
   return {

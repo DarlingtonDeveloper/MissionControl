@@ -165,11 +165,11 @@ Rust `core/` built but never called. Go does its own parsing.
 - [ ] Pre-commit hooks via lefthook or husky
 
 ### 12. Personas Management
-- [ ] Settings panel: enable/disable all 11 personas individually
-- [ ] Per-project persona configuration (stored in `.mission/config.json`)
-- [ ] Persona descriptions visible in Settings
-- [ ] Persona prompt preview/edit capability
-- [ ] Sync persona settings with workflow matrix
+- [x] Settings panel: enable/disable all 11 personas individually
+- [x] Per-project persona configuration (stored in `.mission/config.json`)
+- [x] Persona descriptions visible in Settings
+- [x] Persona prompt preview/edit capability
+- [x] Sync persona settings with workflow matrix
 
 ### 13. Dynamic Project Switching
 - [ ] Orchestrator API: `POST /api/projects/select` to switch active project

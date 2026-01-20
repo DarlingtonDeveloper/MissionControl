@@ -1,5 +1,6 @@
 // Re-export workflow types
 export * from './workflow'
+import type { Phase } from './workflow'
 
 // Agent types
 export type AgentType = 'python' | 'claude-code'
@@ -66,9 +67,12 @@ export interface Persona {
   name: string
   description: string
   color: string
-  tools: string[]
-  skills: string[]
+  phase: Phase // which workflow phase this persona belongs to
+  enabled: boolean // can be disabled per-project
+  tools: string[] // available tools for this persona
+  skills: string[] // skills/capabilities
   systemPrompt: string
+  isBuiltin: boolean // true for the 11 workflow personas
 }
 
 // King Mode types
@@ -130,43 +134,139 @@ export interface Event {
   data?: unknown
 }
 
-// Default personas
+// The 11 workflow personas
 export const DEFAULT_PERSONAS: Persona[] = [
   {
-    id: 'code-reviewer',
-    name: 'Code Reviewer',
-    description: 'Reviews code for bugs, security, and best practices',
-    color: '#22c55e',
-    tools: ['read', 'grep', 'bash_readonly'],
-    skills: ['code-review', 'security-audit'],
-    systemPrompt: 'You are a code reviewer. Focus on bugs, security, and best practices. Do not modify files.'
+    id: 'researcher',
+    name: 'Researcher',
+    description: 'Research prior art, assess feasibility, analyze competitors',
+    color: '#6366f1', // indigo
+    phase: 'idea',
+    enabled: true,
+    tools: ['read', 'grep', 'web_search', 'bash_readonly'],
+    skills: ['research', 'analysis', 'feasibility-assessment'],
+    systemPrompt: 'You are a Researcher. Focus on research, prior art, and feasibility analysis. Do not modify files.',
+    isBuiltin: true
   },
   {
-    id: 'full-developer',
-    name: 'Full Developer',
-    description: 'Senior developer with full access to all tools',
-    color: '#3b82f6',
+    id: 'designer',
+    name: 'Designer',
+    description: 'UI mockups, wireframes, user flows',
+    color: '#ec4899', // pink
+    phase: 'design',
+    enabled: true,
+    tools: ['read', 'write', 'grep'],
+    skills: ['ui-design', 'wireframing', 'user-flows', 'mockups'],
+    systemPrompt: 'You are a Designer. Create UI mockups, wireframes, and user flows. Focus on design artifacts.',
+    isBuiltin: true
+  },
+  {
+    id: 'architect',
+    name: 'Architect',
+    description: 'API contracts, data models, system design',
+    color: '#06b6d4', // cyan
+    phase: 'design',
+    enabled: true,
+    tools: ['read', 'write', 'grep', 'bash_readonly'],
+    skills: ['api-design', 'data-modeling', 'system-architecture', 'technical-specs'],
+    systemPrompt: 'You are an Architect. Design API contracts, data models, and system architecture. Write specs, not code.',
+    isBuiltin: true
+  },
+  {
+    id: 'developer',
+    name: 'Developer',
+    description: 'Production code, tests, feature implementation',
+    color: '#3b82f6', // blue
+    phase: 'implement',
+    enabled: true,
     tools: ['read', 'write', 'edit', 'bash', 'grep', 'tree'],
-    skills: ['code-review', 'implementation', 'refactoring', 'testing'],
-    systemPrompt: 'You are a senior developer. Write clean, tested, documented code.'
+    skills: ['implementation', 'testing', 'refactoring', 'debugging'],
+    systemPrompt: 'You are a Developer. Write clean, tested, documented code. Follow existing patterns.',
+    isBuiltin: true
   },
   {
-    id: 'test-writer',
-    name: 'Test Writer',
-    description: 'QA engineer focused on comprehensive testing',
-    color: '#eab308',
-    tools: ['read', 'write_tests', 'bash', 'grep'],
-    skills: ['testing', 'test-coverage'],
-    systemPrompt: 'You are a QA engineer. Write comprehensive tests. Do not modify source files, only test files.'
+    id: 'debugger',
+    name: 'Debugger',
+    description: 'Bug investigation, root cause analysis, fixes',
+    color: '#f97316', // orange
+    phase: 'implement',
+    enabled: true,
+    tools: ['read', 'write', 'edit', 'bash', 'grep'],
+    skills: ['debugging', 'root-cause-analysis', 'bug-fixing', 'log-analysis'],
+    systemPrompt: 'You are a Debugger. Investigate bugs, identify root causes, and implement fixes. Document findings.',
+    isBuiltin: true
   },
   {
-    id: 'documentation',
-    name: 'Documentation',
-    description: 'Technical writer for clear documentation',
-    color: '#a855f7',
-    tools: ['read', 'write_docs', 'grep'],
-    skills: ['documentation', 'api-docs'],
-    systemPrompt: 'You are a technical writer. Create clear, comprehensive documentation.'
+    id: 'reviewer',
+    name: 'Reviewer',
+    description: 'Code quality review, best practices',
+    color: '#22c55e', // green
+    phase: 'verify',
+    enabled: true,
+    tools: ['read', 'grep', 'bash_readonly'],
+    skills: ['code-review', 'best-practices', 'quality-assurance'],
+    systemPrompt: 'You are a Reviewer. Review code for bugs, quality, and best practices. Do not modify files.',
+    isBuiltin: true
+  },
+  {
+    id: 'security',
+    name: 'Security',
+    description: 'Vulnerability checks, OWASP compliance',
+    color: '#ef4444', // red
+    phase: 'verify',
+    enabled: false, // disabled by default for personal projects
+    tools: ['read', 'grep', 'bash_readonly'],
+    skills: ['security-audit', 'vulnerability-assessment', 'owasp', 'penetration-testing'],
+    systemPrompt: 'You are a Security auditor. Check for vulnerabilities (OWASP Top 10), review auth, and assess input validation. Do not modify files.',
+    isBuiltin: true
+  },
+  {
+    id: 'tester',
+    name: 'Tester',
+    description: 'Unit and integration tests, coverage',
+    color: '#eab308', // yellow
+    phase: 'verify',
+    enabled: true,
+    tools: ['read', 'write', 'bash', 'grep'],
+    skills: ['unit-testing', 'integration-testing', 'test-coverage', 'test-design'],
+    systemPrompt: 'You are a Tester. Write comprehensive unit and integration tests. Only modify test files.',
+    isBuiltin: true
+  },
+  {
+    id: 'qa',
+    name: 'QA',
+    description: 'E2E validation, user flows, UX testing',
+    color: '#a855f7', // purple
+    phase: 'verify',
+    enabled: false, // disabled by default for personal projects
+    tools: ['read', 'write', 'bash', 'grep'],
+    skills: ['e2e-testing', 'user-acceptance-testing', 'ux-validation', 'manual-testing'],
+    systemPrompt: 'You are a QA engineer. Validate user flows end-to-end, test edge cases, and check UX. Write E2E test scripts.',
+    isBuiltin: true
+  },
+  {
+    id: 'docs',
+    name: 'Docs',
+    description: 'Documentation, guides, API docs',
+    color: '#64748b', // slate
+    phase: 'document',
+    enabled: true,
+    tools: ['read', 'write', 'grep'],
+    skills: ['documentation', 'technical-writing', 'api-docs', 'tutorials'],
+    systemPrompt: 'You are a Documentation writer. Create clear, comprehensive documentation. Write markdown files only.',
+    isBuiltin: true
+  },
+  {
+    id: 'devops',
+    name: 'DevOps',
+    description: 'CI/CD, deployments, versioning',
+    color: '#10b981', // emerald
+    phase: 'release',
+    enabled: false, // disabled by default for personal projects
+    tools: ['read', 'write', 'edit', 'bash', 'grep'],
+    skills: ['ci-cd', 'deployment', 'infrastructure', 'monitoring', 'versioning'],
+    systemPrompt: 'You are a DevOps engineer. Configure CI/CD pipelines, manage deployments, and handle versioning.',
+    isBuiltin: true
   }
 ]
 

@@ -3,14 +3,25 @@ import type { Phase } from '../types/workflow'
 import type { MatrixCell } from '../types/project'
 import { PHASE_PERSONAS, DEFAULT_ZONES } from '../types/project'
 import { ALL_PHASES, getPhaseLabel } from '../types/workflow'
+import { useStore } from '../stores/useStore'
 
 interface WorkflowMatrixProps {
   cells: MatrixCell[]
   onChange: (cells: MatrixCell[]) => void
+  /** If true, respect persona enabled state from settings (grays out disabled personas) */
+  respectPersonaSettings?: boolean
 }
 
-export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
+export function WorkflowMatrix({ cells, onChange, respectPersonaSettings = false }: WorkflowMatrixProps) {
   const zones = DEFAULT_ZONES
+  const personas = useStore((s) => s.personas)
+
+  // Check if a persona is enabled in settings
+  const isPersonaEnabled = (personaId: string): boolean => {
+    if (!respectPersonaSettings) return true
+    const persona = personas.find((p) => p.id === personaId)
+    return persona?.enabled ?? true
+  }
 
   // Get cell state
   const getCell = (phase: Phase, zone: string, persona: string): boolean => {
@@ -20,8 +31,9 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
     return cell?.enabled ?? true
   }
 
-  // Toggle single cell
+  // Toggle single cell (only if persona is enabled in settings)
   const toggleCell = (phase: Phase, zone: string, persona: string) => {
+    if (!isPersonaEnabled(persona)) return // Can't toggle disabled personas
     const updated = cells.map((c) => {
       if (c.phase === phase && c.zone === zone && c.persona === persona) {
         return { ...c, enabled: !c.enabled }
@@ -31,14 +43,16 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
     onChange(updated)
   }
 
-  // Toggle entire phase row
+  // Toggle entire phase row (only toggles enabled personas)
   const togglePhase = (phase: Phase) => {
-    const phasePersonas = PHASE_PERSONAS[phase]
+    const phasePersonas = PHASE_PERSONAS[phase].filter(isPersonaEnabled)
+    if (phasePersonas.length === 0) return // All personas disabled
+
     const allEnabled = zones.every((zone) =>
       phasePersonas.every((persona) => getCell(phase, zone, persona))
     )
     const updated = cells.map((c) => {
-      if (c.phase === phase) {
+      if (c.phase === phase && isPersonaEnabled(c.persona)) {
         return { ...c, enabled: !allEnabled }
       }
       return c
@@ -46,13 +60,15 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
     onChange(updated)
   }
 
-  // Toggle entire zone column
+  // Toggle entire zone column (only toggles enabled personas)
   const toggleZone = (zone: string) => {
     const allEnabled = ALL_PHASES.every((phase) =>
-      PHASE_PERSONAS[phase].every((persona) => getCell(phase, zone, persona))
+      PHASE_PERSONAS[phase]
+        .filter(isPersonaEnabled)
+        .every((persona) => getCell(phase, zone, persona))
     )
     const updated = cells.map((c) => {
-      if (c.zone === zone) {
+      if (c.zone === zone && isPersonaEnabled(c.persona)) {
         return { ...c, enabled: !allEnabled }
       }
       return c
@@ -60,9 +76,11 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
     onChange(updated)
   }
 
-  // Phase header state (all, some, none)
+  // Phase header state (all, some, none) - only considers enabled personas
   const getPhaseState = (phase: Phase): 'all' | 'some' | 'none' => {
-    const phasePersonas = PHASE_PERSONAS[phase]
+    const phasePersonas = PHASE_PERSONAS[phase].filter(isPersonaEnabled)
+    if (phasePersonas.length === 0) return 'none' // All personas disabled
+
     const enabledCount = zones.reduce(
       (sum, zone) => sum + phasePersonas.filter((p) => getCell(phase, zone, p)).length,
       0
@@ -111,27 +129,45 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
                 </td>
               </tr>
               {/* Persona rows within phase */}
-              {PHASE_PERSONAS[phase].map((persona) => (
-                <tr key={persona}>
-                  <td className="p-2 text-gray-400 pl-6 border-b border-gray-800">
-                    {persona.charAt(0).toUpperCase() + persona.slice(1)}
-                  </td>
-                  {zones.map((zone) => {
-                    const enabled = getCell(phase, zone, persona)
-                    return (
-                      <td
-                        key={`${phase}-${zone}-${persona}`}
-                        onClick={() => toggleCell(phase, zone, persona)}
-                        className="p-2 text-center border-b border-gray-800 cursor-pointer hover:bg-gray-800 transition-colors"
-                      >
-                        <span className={enabled ? 'text-green-500' : 'text-gray-600'}>
-                          {enabled ? '✓' : '○'}
-                        </span>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
+              {PHASE_PERSONAS[phase].map((persona) => {
+                const personaDisabled = !isPersonaEnabled(persona)
+                return (
+                  <tr key={persona} className={personaDisabled ? 'opacity-40' : ''}>
+                    <td className={`p-2 pl-6 border-b border-gray-800 ${
+                      personaDisabled ? 'text-gray-600' : 'text-gray-400'
+                    }`}>
+                      {persona.charAt(0).toUpperCase() + persona.slice(1)}
+                      {personaDisabled && (
+                        <span className="ml-2 text-[9px] text-gray-600">(disabled)</span>
+                      )}
+                    </td>
+                    {zones.map((zone) => {
+                      const enabled = getCell(phase, zone, persona)
+                      return (
+                        <td
+                          key={`${phase}-${zone}-${persona}`}
+                          onClick={() => toggleCell(phase, zone, persona)}
+                          className={`p-2 text-center border-b border-gray-800 transition-colors ${
+                            personaDisabled
+                              ? 'cursor-not-allowed'
+                              : 'cursor-pointer hover:bg-gray-800'
+                          }`}
+                        >
+                          <span className={
+                            personaDisabled
+                              ? 'text-gray-700'
+                              : enabled
+                                ? 'text-green-500'
+                                : 'text-gray-600'
+                          }>
+                            {enabled && !personaDisabled ? '✓' : '○'}
+                          </span>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
             </Fragment>
           ))}
         </tbody>

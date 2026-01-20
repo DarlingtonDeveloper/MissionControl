@@ -2,6 +2,24 @@
 
 All notable changes to MissionControl are documented in this file.
 
+## v5.1 - Quality of Life (In Progress)
+
+Improved developer experience and workflow management.
+
+### Personas Management
+- 11 workflow personas (researcher, designer, architect, developer, debugger, reviewer, security, tester, qa, docs, devops)
+- Enable/disable personas per-project in Settings
+- Persona configuration stored in `.mission/config.json`
+- Prompt preview and edit capability for each persona
+- WorkflowMatrix respects disabled personas
+- Tools and skills defined for each persona
+
+### Testing
+- 130 web tests (React + types)
+- 12 new persona-related tests
+
+---
+
 ## v5 - King + mc CLI
 
 The brain of MissionControl. King orchestration with CLI tooling.

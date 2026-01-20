@@ -77,8 +77,8 @@ func NewProjectsHandler() *ProjectsHandler {
 // RegisterRoutes registers project API routes
 func (h *ProjectsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", h.handleProjects)
-	mux.HandleFunc("/api/projects/", h.handleProject)
 	mux.HandleFunc("/api/projects/check", h.handleCheckPath)
+	mux.HandleFunc("/api/projects/", h.handleProject)
 }
 
 func (h *ProjectsHandler) handleProjects(w http.ResponseWriter, r *http.Request) {
@@ -94,15 +94,23 @@ func (h *ProjectsHandler) handleProjects(w http.ResponseWriter, r *http.Request)
 
 func (h *ProjectsHandler) handleProject(w http.ResponseWriter, r *http.Request) {
 	// Extract path from URL (URL-encoded)
-	path := strings.TrimPrefix(r.URL.Path, "/api/projects/")
-	if path == "" || path == "check" {
+	urlPath := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+	if urlPath == "" || urlPath == "check" {
 		// Handled by handleCheckPath or handleProjects
+		return
+	}
+
+	// Check if this is a persona route: {project-path}/personas[/{persona-id}[/prompt]]
+	if idx := strings.Index(urlPath, "/personas"); idx != -1 {
+		projectPath := urlPath[:idx]
+		personaPath := urlPath[idx+len("/personas"):]
+		h.handlePersonas(w, r, projectPath, personaPath)
 		return
 	}
 
 	switch r.Method {
 	case http.MethodDelete:
-		h.deleteProject(w, r, path)
+		h.deleteProject(w, r, urlPath)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -174,6 +182,33 @@ type MatrixCell struct {
 	Zone    string `json:"zone"`
 	Persona string `json:"persona"`
 	Enabled bool   `json:"enabled"`
+}
+
+// PersonaConfig represents persona configuration in .mission/config.json
+type PersonaConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// ProjectConfig represents .mission/config.json
+type ProjectConfig struct {
+	Version  string                   `json:"version"`
+	Audience string                   `json:"audience"`
+	Zones    []string                 `json:"zones"`
+	King     bool                     `json:"king"`
+	Matrix   []MatrixCell             `json:"matrix,omitempty"`
+	Personas map[string]PersonaConfig `json:"personas,omitempty"`
+}
+
+// PersonaResponse represents persona data returned by API
+type PersonaResponse struct {
+	ID          string `json:"id"`
+	Enabled     bool   `json:"enabled"`
+	HasPrompt   bool   `json:"hasPrompt"`
+}
+
+// UpdatePersonaRequest is the request body for updating a persona
+type UpdatePersonaRequest struct {
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 func (h *ProjectsHandler) createProject(w http.ResponseWriter, r *http.Request) {
@@ -338,4 +373,244 @@ func (h *ProjectsHandler) saveConfig(config *GlobalConfig) error {
 		return err
 	}
 	return os.WriteFile(h.configPath, data, 0644)
+}
+
+// The 11 builtin persona IDs
+var builtinPersonas = []string{
+	"researcher", "designer", "architect", "developer", "debugger",
+	"reviewer", "security", "tester", "qa", "docs", "devops",
+}
+
+// handlePersonas routes persona-related requests
+func (h *ProjectsHandler) handlePersonas(w http.ResponseWriter, r *http.Request, projectPath, personaPath string) {
+	// Expand ~ in project path
+	if strings.HasPrefix(projectPath, "~") {
+		home, _ := os.UserHomeDir()
+		projectPath = filepath.Join(home, projectPath[1:])
+	}
+
+	// Check project exists
+	missionDir := filepath.Join(projectPath, ".mission")
+	if _, err := os.Stat(missionDir); os.IsNotExist(err) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Project not found or not initialized"})
+		return
+	}
+
+	// Route based on persona path:
+	// "" or "/" -> list personas
+	// "/{id}" -> get/update persona
+	// "/{id}/prompt" -> get/update prompt
+	personaPath = strings.TrimPrefix(personaPath, "/")
+	parts := strings.Split(personaPath, "/")
+
+	if personaPath == "" {
+		// GET /api/projects/{path}/personas
+		if r.Method == http.MethodGet {
+			h.listPersonas(w, r, projectPath)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+
+	personaID := parts[0]
+	if len(parts) == 1 {
+		// GET/PUT /api/projects/{path}/personas/{id}
+		switch r.Method {
+		case http.MethodGet:
+			h.getPersona(w, r, projectPath, personaID)
+		case http.MethodPut:
+			h.updatePersona(w, r, projectPath, personaID)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "prompt" {
+		// GET/PUT /api/projects/{path}/personas/{id}/prompt
+		switch r.Method {
+		case http.MethodGet:
+			h.getPersonaPrompt(w, r, projectPath, personaID)
+		case http.MethodPut:
+			h.updatePersonaPrompt(w, r, projectPath, personaID)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+
+	http.Error(w, "Not found", http.StatusNotFound)
+}
+
+// listPersonas returns all persona configurations for a project
+func (h *ProjectsHandler) listPersonas(w http.ResponseWriter, r *http.Request, projectPath string) {
+	config, err := h.loadProjectConfig(projectPath)
+	if err != nil {
+		// Return default config if not found
+		config = &ProjectConfig{
+			Personas: make(map[string]PersonaConfig),
+		}
+	}
+
+	// Build response with all builtin personas
+	personas := make([]PersonaResponse, 0, len(builtinPersonas))
+	promptsDir := filepath.Join(projectPath, ".mission", "prompts")
+
+	for _, id := range builtinPersonas {
+		personaConfig, exists := config.Personas[id]
+		enabled := true
+		if exists {
+			enabled = personaConfig.Enabled
+		}
+
+		// Check if prompt file exists
+		promptPath := filepath.Join(promptsDir, id+".md")
+		_, hasPrompt := os.Stat(promptPath)
+
+		personas = append(personas, PersonaResponse{
+			ID:        id,
+			Enabled:   enabled,
+			HasPrompt: hasPrompt == nil,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"personas": personas,
+	})
+}
+
+// getPersona returns a single persona's configuration
+func (h *ProjectsHandler) getPersona(w http.ResponseWriter, r *http.Request, projectPath, personaID string) {
+	config, err := h.loadProjectConfig(projectPath)
+	if err != nil {
+		config = &ProjectConfig{Personas: make(map[string]PersonaConfig)}
+	}
+
+	personaConfig, exists := config.Personas[personaID]
+	enabled := true
+	if exists {
+		enabled = personaConfig.Enabled
+	}
+
+	promptPath := filepath.Join(projectPath, ".mission", "prompts", personaID+".md")
+	_, hasPrompt := os.Stat(promptPath)
+
+	writeJSON(w, http.StatusOK, PersonaResponse{
+		ID:        personaID,
+		Enabled:   enabled,
+		HasPrompt: hasPrompt == nil,
+	})
+}
+
+// updatePersona updates a persona's configuration
+func (h *ProjectsHandler) updatePersona(w http.ResponseWriter, r *http.Request, projectPath, personaID string) {
+	var req UpdatePersonaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	config, err := h.loadProjectConfig(projectPath)
+	if err != nil {
+		config = &ProjectConfig{
+			Version:  "1.0.0",
+			Personas: make(map[string]PersonaConfig),
+		}
+	}
+
+	if config.Personas == nil {
+		config.Personas = make(map[string]PersonaConfig)
+	}
+
+	// Update enabled state if provided
+	if req.Enabled != nil {
+		config.Personas[personaID] = PersonaConfig{
+			Enabled: *req.Enabled,
+		}
+	}
+
+	if err := h.saveProjectConfig(projectPath, config); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to save config"})
+		return
+	}
+
+	// Return updated persona
+	h.getPersona(w, r, projectPath, personaID)
+}
+
+// getPersonaPrompt returns the prompt content for a persona
+func (h *ProjectsHandler) getPersonaPrompt(w http.ResponseWriter, r *http.Request, projectPath, personaID string) {
+	promptPath := filepath.Join(projectPath, ".mission", "prompts", personaID+".md")
+
+	content, err := os.ReadFile(promptPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Prompt not found"})
+		} else {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to read prompt"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"id":      personaID,
+		"content": string(content),
+	})
+}
+
+// updatePersonaPrompt updates the prompt content for a persona
+func (h *ProjectsHandler) updatePersonaPrompt(w http.ResponseWriter, r *http.Request, projectPath, personaID string) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	promptPath := filepath.Join(projectPath, ".mission", "prompts", personaID+".md")
+
+	// Ensure prompts directory exists
+	promptsDir := filepath.Dir(promptPath)
+	if err := os.MkdirAll(promptsDir, 0755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create prompts directory"})
+		return
+	}
+
+	if err := os.WriteFile(promptPath, []byte(req.Content), 0644); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to write prompt"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"id":      personaID,
+		"content": req.Content,
+	})
+}
+
+// loadProjectConfig loads .mission/config.json
+func (h *ProjectsHandler) loadProjectConfig(projectPath string) (*ProjectConfig, error) {
+	configPath := filepath.Join(projectPath, ".mission", "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config ProjectConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+// saveProjectConfig saves .mission/config.json
+func (h *ProjectsHandler) saveProjectConfig(projectPath string, config *ProjectConfig) error {
+	configPath := filepath.Join(projectPath, ".mission", "config.json")
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configPath, data, 0644)
 }

@@ -1,11 +1,26 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { WorkflowMatrix } from './WorkflowMatrix'
 import { buildInitialMatrix, DEFAULT_ZONES, PHASE_PERSONAS } from '../types/project'
 import type { MatrixCell } from '../types/project'
+import { useStore } from '../stores/useStore'
+import { DEFAULT_PERSONAS } from '../types'
+
+// Mock the store
+vi.mock('../stores/useStore', () => ({
+  useStore: vi.fn()
+}))
 
 describe('WorkflowMatrix', () => {
   const createTestMatrix = (): MatrixCell[] => buildInitialMatrix('customers')
+
+  beforeEach(() => {
+    // Default mock: all personas enabled
+    vi.mocked(useStore).mockImplementation((selector) => {
+      const state = { personas: DEFAULT_PERSONAS }
+      return selector(state as never)
+    })
+  })
 
   it('should render all phases and zones', () => {
     const cells = createTestMatrix()
@@ -207,5 +222,109 @@ describe('WorkflowMatrix', () => {
 
     // Only one cell should have changed (single cell click)
     expect(changedCount).toBe(1)
+  })
+
+  describe('with respectPersonaSettings enabled', () => {
+    it('should show disabled indicator for disabled personas', () => {
+      // Mock store with security persona disabled
+      const personas = DEFAULT_PERSONAS.map(p => ({
+        ...p,
+        enabled: p.id !== 'security'
+      }))
+      vi.mocked(useStore).mockImplementation((selector) => {
+        const state = { personas }
+        return selector(state as never)
+      })
+
+      const cells = createTestMatrix()
+      const onChange = vi.fn()
+
+      render(<WorkflowMatrix cells={cells} onChange={onChange} respectPersonaSettings />)
+
+      // Security row should show (disabled) indicator
+      expect(screen.getByText('(disabled)')).toBeInTheDocument()
+    })
+
+    it('should not call onChange when clicking disabled persona cell', () => {
+      // Mock store with security persona disabled
+      const personas = DEFAULT_PERSONAS.map(p => ({
+        ...p,
+        enabled: p.id !== 'security'
+      }))
+      vi.mocked(useStore).mockImplementation((selector) => {
+        const state = { personas }
+        return selector(state as never)
+      })
+
+      const cells = createTestMatrix()
+      const onChange = vi.fn()
+
+      render(<WorkflowMatrix cells={cells} onChange={onChange} respectPersonaSettings />)
+
+      // Find the Security row and click a cell in it
+      const securityRow = screen.getByText('Security').closest('tr')
+      const securityCells = securityRow?.querySelectorAll('td')
+
+      // Click the second td (first data cell after label)
+      if (securityCells && securityCells[1]) {
+        fireEvent.click(securityCells[1])
+      }
+
+      // onChange should not be called for disabled persona
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('should apply opacity to disabled persona rows', () => {
+      // Mock store with qa persona disabled
+      const personas = DEFAULT_PERSONAS.map(p => ({
+        ...p,
+        enabled: p.id !== 'qa'
+      }))
+      vi.mocked(useStore).mockImplementation((selector) => {
+        const state = { personas }
+        return selector(state as never)
+      })
+
+      const cells = createTestMatrix()
+      const onChange = vi.fn()
+
+      render(<WorkflowMatrix cells={cells} onChange={onChange} respectPersonaSettings />)
+
+      // QA row should have opacity class
+      const qaRow = screen.getByText('Qa').closest('tr')
+      expect(qaRow).toHaveClass('opacity-40')
+    })
+
+    it('should work normally when respectPersonaSettings is false', () => {
+      // Mock store with security disabled
+      const personas = DEFAULT_PERSONAS.map(p => ({
+        ...p,
+        enabled: p.id !== 'security'
+      }))
+      vi.mocked(useStore).mockImplementation((selector) => {
+        const state = { personas }
+        return selector(state as never)
+      })
+
+      const cells = createTestMatrix()
+      const onChange = vi.fn()
+
+      // Without respectPersonaSettings prop
+      render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+      // Should NOT show (disabled) indicator
+      expect(screen.queryByText('(disabled)')).not.toBeInTheDocument()
+
+      // Should be able to click Security cells
+      const securityRow = screen.getByText('Security').closest('tr')
+      const securityCells = securityRow?.querySelectorAll('td')
+
+      if (securityCells && securityCells[1]) {
+        fireEvent.click(securityCells[1])
+      }
+
+      // onChange should be called
+      expect(onChange).toHaveBeenCalled()
+    })
   })
 })

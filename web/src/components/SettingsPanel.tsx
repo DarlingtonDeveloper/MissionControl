@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Modal } from './Modal'
-import { useStore } from '../stores/useStore'
+import { useStore, fetchPersonaPrompt, updatePersonaPrompt } from '../stores/useStore'
+import { useProjectStore } from '../stores/useProjectStore'
 import { KEYBOARD_SHORTCUTS } from '../hooks/useKeyboardShortcuts'
 import type { Persona } from '../types'
 
@@ -148,18 +149,57 @@ function PersonasTab() {
   const updatePersona = useStore((s) => s.updatePersona)
   const addPersona = useStore((s) => s.addPersona)
   const removePersona = useStore((s) => s.removePersona)
+  const currentProject = useProjectStore((s) => s.currentProject)
 
   const [editing, setEditing] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<Partial<Persona>>({})
+  const [promptContent, setPromptContent] = useState<string>('')
+  const [promptLoading, setPromptLoading] = useState(false)
+  const [promptError, setPromptError] = useState<string | null>(null)
+  const [promptSaving, setPromptSaving] = useState(false)
+  const [promptDirty, setPromptDirty] = useState(false)
+
+  // Load prompt when editing a builtin persona
+  const loadPrompt = useCallback(async (personaId: string) => {
+    if (!currentProject) {
+      setPromptContent('')
+      setPromptError('No project selected')
+      return
+    }
+
+    setPromptLoading(true)
+    setPromptError(null)
+    try {
+      const content = await fetchPersonaPrompt(currentProject, personaId)
+      setPromptContent(content)
+      setPromptDirty(false)
+    } catch (err) {
+      setPromptError(err instanceof Error ? err.message : 'Failed to load prompt')
+      setPromptContent('')
+    } finally {
+      setPromptLoading(false)
+    }
+  }, [currentProject])
 
   const startEdit = (persona: Persona) => {
     setEditing(persona.id)
     setEditForm({ ...persona })
+    setPromptContent('')
+    setPromptError(null)
+    setPromptDirty(false)
+
+    // Load prompt for builtin personas
+    if (persona.isBuiltin) {
+      loadPrompt(persona.id)
+    }
   }
 
   const cancelEdit = () => {
     setEditing(null)
     setEditForm({})
+    setPromptContent('')
+    setPromptError(null)
+    setPromptDirty(false)
   }
 
   const saveEdit = () => {
@@ -169,6 +209,20 @@ function PersonasTab() {
     cancelEdit()
   }
 
+  const savePrompt = async () => {
+    if (!editing || !currentProject) return
+
+    setPromptSaving(true)
+    try {
+      await updatePersonaPrompt(currentProject, editing, promptContent)
+      setPromptDirty(false)
+    } catch (err) {
+      setPromptError(err instanceof Error ? err.message : 'Failed to save prompt')
+    } finally {
+      setPromptSaving(false)
+    }
+  }
+
   const createNew = () => {
     const id = `persona-${Date.now()}`
     const newPersona: Persona = {
@@ -176,19 +230,41 @@ function PersonasTab() {
       name: 'New Persona',
       description: 'Description here',
       color: '#6b7280',
-      tools: [],
+      phase: 'implement',
+      enabled: true,
+      tools: ['read', 'write', 'edit', 'bash', 'grep'],
       skills: [],
-      systemPrompt: ''
+      systemPrompt: '',
+      isBuiltin: false
     }
     addPersona(newPersona)
     startEdit(newPersona)
   }
 
+  const toggleEnabled = (persona: Persona, e: React.MouseEvent) => {
+    e.stopPropagation()
+    updatePersona(persona.id, { enabled: !persona.enabled })
+  }
+
+  // Group personas by phase
+  const phases = ['idea', 'design', 'implement', 'verify', 'document', 'release'] as const
+  const phaseLabels: Record<string, string> = {
+    idea: 'Idea',
+    design: 'Design',
+    implement: 'Implement',
+    verify: 'Verify',
+    document: 'Document',
+    release: 'Release'
+  }
+
   if (editing) {
+    const isBuiltin = editForm.isBuiltin
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-100">Edit Persona</h3>
+          <h3 className="text-sm font-medium text-gray-100">
+            {isBuiltin ? 'View Persona' : 'Edit Persona'}
+          </h3>
           <button
             onClick={cancelEdit}
             className="text-xs text-gray-500 hover:text-gray-300"
@@ -204,20 +280,46 @@ function PersonasTab() {
             type="text"
             value={editForm.name || ''}
             onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
+            disabled={isBuiltin}
+            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           />
+        </div>
+
+        {/* Phase */}
+        <div>
+          <label className="block text-[11px] text-gray-500 mb-1">Phase</label>
+          <select
+            value={editForm.phase || 'implement'}
+            onChange={(e) => setEditForm({ ...editForm, phase: e.target.value as Persona['phase'] })}
+            disabled={isBuiltin}
+            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {phases.map(p => (
+              <option key={p} value={p}>{phaseLabels[p]}</option>
+            ))}
+          </select>
         </div>
 
         {/* Color */}
         <div>
           <label className="block text-[11px] text-gray-500 mb-1">Color</label>
-          <input
-            type="text"
-            value={editForm.color || ''}
-            onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
-            placeholder="#hex"
-            className="w-32 px-3 py-2 text-sm font-mono bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
-          />
+          <div className="flex gap-2 items-center">
+            <input
+              type="color"
+              value={editForm.color || '#6b7280'}
+              onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
+              disabled={isBuiltin}
+              className="w-10 h-8 bg-gray-800 border border-gray-700/50 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <input
+              type="text"
+              value={editForm.color || ''}
+              onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
+              disabled={isBuiltin}
+              placeholder="#hex"
+              className="w-24 px-3 py-2 text-sm font-mono bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          </div>
         </div>
 
         {/* Description */}
@@ -227,86 +329,316 @@ function PersonasTab() {
             type="text"
             value={editForm.description || ''}
             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
+            disabled={isBuiltin}
+            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           />
+        </div>
+
+        {/* Tools */}
+        <div>
+          <label className="block text-[11px] text-gray-500 mb-1">Tools</label>
+          {isBuiltin ? (
+            <div className="flex flex-wrap gap-1.5">
+              {(editForm.tools || []).map((tool) => (
+                <span
+                  key={tool}
+                  className="px-2 py-0.5 text-[10px] bg-gray-800 text-gray-400 rounded"
+                >
+                  {tool}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={(editForm.tools || []).join(', ')}
+              onChange={(e) => setEditForm({
+                ...editForm,
+                tools: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
+              })}
+              placeholder="read, write, edit, bash, grep"
+              className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
+            />
+          )}
+          <p className="mt-1 text-[10px] text-gray-600">
+            Available: read, write, edit, bash, bash_readonly, grep, tree, web_search
+          </p>
+        </div>
+
+        {/* Skills */}
+        <div>
+          <label className="block text-[11px] text-gray-500 mb-1">Skills</label>
+          {isBuiltin ? (
+            <div className="flex flex-wrap gap-1.5">
+              {(editForm.skills || []).map((skill) => (
+                <span
+                  key={skill}
+                  className="px-2 py-0.5 text-[10px] bg-gray-800 text-gray-400 rounded"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={(editForm.skills || []).join(', ')}
+              onChange={(e) => setEditForm({
+                ...editForm,
+                skills: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+              })}
+              placeholder="code-review, implementation, testing"
+              className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 focus:outline-none focus:border-gray-600"
+            />
+          )}
         </div>
 
         {/* System Prompt */}
         <div>
-          <label className="block text-[11px] text-gray-500 mb-1">System Prompt Addition</label>
-          <textarea
-            value={editForm.systemPrompt || ''}
-            onChange={(e) => setEditForm({ ...editForm, systemPrompt: e.target.value })}
-            rows={3}
-            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700/50 rounded text-gray-100 resize-none focus:outline-none focus:border-gray-600"
-          />
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[11px] text-gray-500">
+              System Prompt {isBuiltin && <span className="text-gray-600">(.mission/prompts/{editing}.md)</span>}
+            </label>
+            {isBuiltin && promptDirty && (
+              <button
+                onClick={savePrompt}
+                disabled={promptSaving}
+                className="text-[10px] text-blue-400 hover:text-blue-300 disabled:opacity-50"
+              >
+                {promptSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            )}
+          </div>
+          {isBuiltin ? (
+            <>
+              {promptLoading ? (
+                <div className="w-full h-32 flex items-center justify-center bg-gray-800 border border-gray-700/50 rounded text-gray-500 text-xs">
+                  Loading prompt...
+                </div>
+              ) : promptError && !promptContent ? (
+                <div className="w-full h-32 flex flex-col items-center justify-center bg-gray-800 border border-gray-700/50 rounded text-xs">
+                  <span className="text-gray-500 mb-2">{promptError}</span>
+                  <button
+                    onClick={() => loadPrompt(editing!)}
+                    className="text-blue-400 hover:text-blue-300"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <textarea
+                  value={promptContent}
+                  onChange={(e) => {
+                    setPromptContent(e.target.value)
+                    setPromptDirty(true)
+                  }}
+                  rows={10}
+                  placeholder={currentProject ? 'Enter prompt content...' : 'Select a project to edit prompts'}
+                  disabled={!currentProject}
+                  className="w-full px-3 py-2 text-sm font-mono bg-gray-800 border border-gray-700/50 rounded text-gray-100 resize-y focus:outline-none focus:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              )}
+              {promptError && promptContent && (
+                <p className="mt-1 text-[10px] text-red-400">{promptError}</p>
+              )}
+            </>
+          ) : (
+            <textarea
+              value={editForm.systemPrompt || ''}
+              onChange={(e) => setEditForm({ ...editForm, systemPrompt: e.target.value })}
+              rows={6}
+              className="w-full px-3 py-2 text-sm font-mono bg-gray-800 border border-gray-700/50 rounded text-gray-100 resize-none focus:outline-none focus:border-gray-600"
+            />
+          )}
+          {isBuiltin && currentProject && (
+            <p className="mt-1 text-[10px] text-gray-600">
+              Edit the prompt file at .mission/prompts/{editForm.id}.md
+            </p>
+          )}
         </div>
 
         {/* Actions */}
         <div className="flex items-center justify-between pt-2">
-          <button
-            onClick={() => {
-              if (confirm('Delete this persona?')) {
-                removePersona(editing)
-                cancelEdit()
-              }
-            }}
-            className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
-          >
-            Delete Persona
-          </button>
+          {!isBuiltin ? (
+            <button
+              onClick={() => {
+                if (confirm('Delete this persona?')) {
+                  removePersona(editing)
+                  cancelEdit()
+                }
+              }}
+              className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+            >
+              Delete Persona
+            </button>
+          ) : (
+            <div />
+          )}
           <div className="flex gap-2">
             <button
               onClick={cancelEdit}
               className="px-3 py-1.5 text-xs text-gray-400 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
             >
-              Cancel
+              {isBuiltin ? 'Close' : 'Cancel'}
             </button>
-            <button
-              onClick={saveEdit}
-              className="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
-            >
-              Save
-            </button>
+            {!isBuiltin && (
+              <button
+                onClick={saveEdit}
+                className="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+              >
+                Save
+              </button>
+            )}
           </div>
         </div>
       </div>
     )
   }
 
+  // Group personas by phase for display
+  const builtinPersonas = personas.filter(p => p.isBuiltin)
+  const customPersonas = personas.filter(p => !p.isBuiltin)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-100">Personas</h3>
-        <button
-          onClick={createNew}
-          className="px-2 py-1 text-[11px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors"
-        >
-          + New Persona
-        </button>
+        <h3 className="text-sm font-medium text-gray-100">Workflow Personas</h3>
       </div>
 
-      <div className="space-y-2">
-        {personas.map((persona) => (
-          <button
-            key={persona.id}
-            onClick={() => startEdit(persona)}
-            className="w-full flex items-center gap-3 p-3 bg-gray-800/50 hover:bg-gray-800 rounded transition-colors text-left"
-          >
-            <span
-              className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ backgroundColor: persona.color }}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-200">{persona.name}</p>
-              <p className="text-[10px] text-gray-500 truncate">{persona.description}</p>
+      <p className="text-[11px] text-gray-500">
+        Toggle personas on/off to control which workers are available in your workflow.
+      </p>
+
+      {/* Builtin personas grouped by phase */}
+      <div className="space-y-3">
+        {phases.map(phase => {
+          const phasePersonas = builtinPersonas.filter(p => p.phase === phase)
+          if (phasePersonas.length === 0) return null
+          return (
+            <div key={phase}>
+              <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1.5">
+                {phaseLabels[phase]}
+              </div>
+              <div className="space-y-1">
+                {phasePersonas.map((persona) => (
+                  <div
+                    key={persona.id}
+                    className={`flex items-center gap-3 p-2.5 rounded transition-colors ${
+                      persona.enabled
+                        ? 'bg-gray-800/50 hover:bg-gray-800'
+                        : 'bg-gray-900/30 opacity-60'
+                    }`}
+                  >
+                    {/* Enable/Disable Toggle */}
+                    <button
+                      onClick={(e) => toggleEnabled(persona, e)}
+                      className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${
+                        persona.enabled ? 'bg-green-500' : 'bg-gray-700'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                          persona.enabled ? 'left-4' : 'left-0.5'
+                        }`}
+                      />
+                    </button>
+
+                    {/* Color dot */}
+                    <span
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: persona.color }}
+                    />
+
+                    {/* Info */}
+                    <button
+                      onClick={() => startEdit(persona)}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <p className="text-sm text-gray-200">{persona.name}</p>
+                      <p className="text-[10px] text-gray-500 truncate">{persona.description}</p>
+                    </button>
+
+                    {/* Tools count */}
+                    <span className="text-[10px] text-gray-600">
+                      {persona.tools.length} tools
+                    </span>
+
+                    {/* View button */}
+                    <button
+                      onClick={() => startEdit(persona)}
+                      className="text-[10px] text-gray-600 hover:text-gray-400 px-2"
+                    >
+                      View
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-            <span className="text-[10px] text-gray-600">
-              {persona.tools.length} tools
-            </span>
-          </button>
-        ))}
+          )
+        })}
       </div>
+
+      {/* Custom personas section */}
+      {customPersonas.length > 0 && (
+        <div className="pt-2 border-t border-gray-800">
+          <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1.5">
+            Custom
+          </div>
+          <div className="space-y-1">
+            {customPersonas.map((persona) => (
+              <div
+                key={persona.id}
+                className={`flex items-center gap-3 p-2.5 rounded transition-colors ${
+                  persona.enabled
+                    ? 'bg-gray-800/50 hover:bg-gray-800'
+                    : 'bg-gray-900/30 opacity-60'
+                }`}
+              >
+                <button
+                  onClick={(e) => toggleEnabled(persona, e)}
+                  className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${
+                    persona.enabled ? 'bg-green-500' : 'bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      persona.enabled ? 'left-4' : 'left-0.5'
+                    }`}
+                  />
+                </button>
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: persona.color }}
+                />
+                <button
+                  onClick={() => startEdit(persona)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <p className="text-sm text-gray-200">{persona.name}</p>
+                  <p className="text-[10px] text-gray-500 truncate">{persona.description}</p>
+                </button>
+                <span className="text-[10px] text-gray-600">
+                  {persona.tools.length} tools
+                </span>
+                <button
+                  onClick={() => startEdit(persona)}
+                  className="text-[10px] text-gray-600 hover:text-gray-400 px-2"
+                >
+                  Edit
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add custom persona button */}
+      <button
+        onClick={createNew}
+        className="w-full py-2 text-[11px] text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 rounded border border-dashed border-gray-700 transition-colors"
+      >
+        + Add Custom Persona
+      </button>
     </div>
   )
 }
