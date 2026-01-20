@@ -3,7 +3,7 @@ VERSION ?= 0.5.0
 PLATFORMS := darwin-amd64 darwin-arm64 linux-amd64 linux-arm64
 DIST_DIR := dist
 
-.PHONY: all build build-mc build-mc-core build-orchestrator build-web clean release test
+.PHONY: all build build-mc build-mc-core build-orchestrator build-web clean release test test-go test-rust test-web test-integration test-e2e test-all lint fmt
 
 all: build
 
@@ -46,6 +46,39 @@ test-rust:
 test-web:
 	@echo "Running web tests..."
 	cd web && npm test
+
+# Integration tests (Go with build tag)
+test-integration:
+	@echo "Running Go integration tests..."
+	cd orchestrator && go test -v -tags=integration ./...
+
+# E2E tests (Playwright)
+test-e2e:
+	@echo "Running E2E tests..."
+	cd web && npm run test:e2e
+
+# Run all tests including integration and E2E
+test-all: test lint test-integration test-e2e
+
+# Lint all code
+lint:
+	@echo "Linting Go..."
+	cd orchestrator && golangci-lint run || true
+	cd cmd/mc && golangci-lint run || true
+	@echo "Linting Rust..."
+	cd core && cargo clippy -- -D warnings || true
+	@echo "Linting TypeScript..."
+	cd web && npm run lint || true
+
+# Format all code
+fmt:
+	@echo "Formatting Go..."
+	cd orchestrator && go fmt ./...
+	cd cmd/mc && go fmt ./...
+	@echo "Formatting Rust..."
+	cd core && cargo fmt
+	@echo "Formatting TypeScript..."
+	cd web && npx prettier --write "src/**/*.{ts,tsx}" || true
 
 # Clean build artifacts
 clean:

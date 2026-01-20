@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { Phase } from '../types/workflow'
 import type { MatrixCell } from '../types/project'
 import { PHASE_PERSONAS, DEFAULT_ZONES } from '../types/project'
@@ -91,9 +92,9 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
         </thead>
         <tbody>
           {ALL_PHASES.map((phase) => (
-            <>
+            <Fragment key={phase}>
               {/* Phase header row */}
-              <tr key={`${phase}-header`} className="bg-gray-800/50">
+              <tr className="bg-gray-800/50">
                 <td
                   colSpan={zones.length + 1}
                   onClick={() => togglePhase(phase)}
@@ -111,7 +112,7 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
               </tr>
               {/* Persona rows within phase */}
               {PHASE_PERSONAS[phase].map((persona) => (
-                <tr key={`${phase}-${persona}`}>
+                <tr key={persona}>
                   <td className="p-2 text-gray-400 pl-6 border-b border-gray-800">
                     {persona.charAt(0).toUpperCase() + persona.slice(1)}
                   </td>
@@ -131,7 +132,7 @@ export function WorkflowMatrix({ cells, onChange }: WorkflowMatrixProps) {
                   })}
                 </tr>
               ))}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>

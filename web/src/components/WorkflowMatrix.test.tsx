@@ -1,0 +1,211 @@
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { WorkflowMatrix } from './WorkflowMatrix'
+import { buildInitialMatrix, DEFAULT_ZONES, PHASE_PERSONAS } from '../types/project'
+import type { MatrixCell } from '../types/project'
+
+describe('WorkflowMatrix', () => {
+  const createTestMatrix = (): MatrixCell[] => buildInitialMatrix('customers')
+
+  it('should render all phases and zones', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Check phases are rendered (as uppercase labels)
+    expect(screen.getByText('Idea')).toBeInTheDocument()
+    expect(screen.getByText('Design')).toBeInTheDocument()
+    expect(screen.getByText('Implement')).toBeInTheDocument()
+    expect(screen.getByText('Verify')).toBeInTheDocument()
+    expect(screen.getByText('Document')).toBeInTheDocument()
+    expect(screen.getByText('Release')).toBeInTheDocument()
+
+    // Check zones are rendered
+    expect(screen.getByText('Frontend')).toBeInTheDocument()
+    expect(screen.getByText('Backend')).toBeInTheDocument()
+    expect(screen.getByText('Database')).toBeInTheDocument()
+    expect(screen.getByText('Shared')).toBeInTheDocument()
+  })
+
+  it('should render all personas for each phase', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Check personas are rendered
+    expect(screen.getByText('Researcher')).toBeInTheDocument()
+    expect(screen.getByText('Designer')).toBeInTheDocument()
+    expect(screen.getByText('Architect')).toBeInTheDocument()
+    expect(screen.getByText('Developer')).toBeInTheDocument()
+    expect(screen.getByText('Debugger')).toBeInTheDocument()
+    expect(screen.getByText('Reviewer')).toBeInTheDocument()
+    expect(screen.getByText('Security')).toBeInTheDocument()
+    expect(screen.getByText('Tester')).toBeInTheDocument()
+    expect(screen.getByText('Qa')).toBeInTheDocument()
+    expect(screen.getByText('Docs')).toBeInTheDocument()
+    expect(screen.getByText('Devops')).toBeInTheDocument()
+  })
+
+  it('should toggle single cell on click', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Find a cell and click it - looking for the enabled checkmark
+    const allCheckmarks = screen.getAllByText('✓')
+    fireEvent.click(allCheckmarks[0].closest('td')!)
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+
+    // Verify the callback was called with an updated cells array
+    const updatedCells = onChange.mock.calls[0][0] as MatrixCell[]
+    expect(updatedCells).toHaveLength(cells.length)
+
+    // At least one cell should be toggled
+    const changedCells = updatedCells.filter((c, i) => c.enabled !== cells[i].enabled)
+    expect(changedCells.length).toBeGreaterThan(0)
+  })
+
+  it('should toggle entire phase row on header click', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Click on the "Idea" phase header row
+    const ideaHeader = screen.getByText('Idea')
+    fireEvent.click(ideaHeader.closest('td')!)
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+
+    const updatedCells = onChange.mock.calls[0][0] as MatrixCell[]
+
+    // All idea phase cells should have the same enabled state
+    const ideaCells = updatedCells.filter((c) => c.phase === 'idea')
+    const firstEnabled = ideaCells[0].enabled
+    expect(ideaCells.every((c) => c.enabled === firstEnabled)).toBe(true)
+  })
+
+  it('should toggle entire zone column on header click', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Click on the "Frontend" zone header
+    const frontendHeader = screen.getByText('Frontend')
+    fireEvent.click(frontendHeader)
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+
+    const updatedCells = onChange.mock.calls[0][0] as MatrixCell[]
+
+    // All frontend zone cells should have the same enabled state
+    const frontendCells = updatedCells.filter((c) => c.zone === 'frontend')
+    const firstEnabled = frontendCells[0].enabled
+    expect(frontendCells.every((c) => c.enabled === firstEnabled)).toBe(true)
+  })
+
+  it('should show correct phase state indicator (all enabled)', () => {
+    // All cells enabled
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Should show ✓ for fully enabled phases
+    const checkmarks = screen.getAllByText('✓')
+    expect(checkmarks.length).toBeGreaterThan(0)
+  })
+
+  it('should show correct phase state indicator (none enabled)', () => {
+    // All cells disabled
+    const cells = createTestMatrix().map((c) => ({ ...c, enabled: false }))
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Should show ○ for disabled
+    const emptyCircles = screen.getAllByText('○')
+    expect(emptyCircles.length).toBeGreaterThan(0)
+  })
+
+  it('should show correct phase state indicator (some enabled)', () => {
+    // Mix of enabled/disabled
+    const cells = createTestMatrix()
+    cells[0].enabled = false // Disable first cell
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Should show ◐ for partially enabled
+    expect(screen.getByText('◐')).toBeInTheDocument()
+  })
+
+  it('should call onChange with updated state', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Click any cell
+    const firstCheckmark = screen.getAllByText('✓')[0]
+    fireEvent.click(firstCheckmark.closest('td')!)
+
+    expect(onChange).toHaveBeenCalledWith(expect.any(Array))
+
+    const updatedCells = onChange.mock.calls[0][0] as MatrixCell[]
+    expect(updatedCells).toHaveLength(cells.length)
+
+    // Each cell should have the correct structure
+    updatedCells.forEach((cell) => {
+      expect(cell).toHaveProperty('phase')
+      expect(cell).toHaveProperty('zone')
+      expect(cell).toHaveProperty('persona')
+      expect(cell).toHaveProperty('enabled')
+    })
+  })
+
+  it('should render legend with instructions', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    expect(screen.getByText(/✓ = enabled/)).toBeInTheDocument()
+    expect(screen.getByText(/○ = disabled/)).toBeInTheDocument()
+    expect(screen.getByText(/Click any cell/)).toBeInTheDocument()
+  })
+
+  it('should preserve other cells when toggling one', () => {
+    const cells = createTestMatrix()
+    const onChange = vi.fn()
+
+    render(<WorkflowMatrix cells={cells} onChange={onChange} />)
+
+    // Click to toggle - find a cell td (not a header)
+    // Get all tds that are clickable data cells (have checkmark)
+    const dataCells = screen.getAllByText('✓').filter(el => {
+      const td = el.closest('td')
+      return td && !td.hasAttribute('colspan') // Exclude header rows
+    })
+
+    fireEvent.click(dataCells[0].closest('td')!)
+
+    const updatedCells = onChange.mock.calls[0][0] as MatrixCell[]
+
+    // Count how many cells changed
+    let changedCount = 0
+    for (let i = 0; i < cells.length; i++) {
+      if (cells[i].enabled !== updatedCells[i].enabled) {
+        changedCount++
+      }
+    }
+
+    // Only one cell should have changed (single cell click)
+    expect(changedCount).toBe(1)
+  })
+})

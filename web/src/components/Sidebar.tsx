@@ -73,7 +73,7 @@ export function Sidebar({
         {/* Project list (if more than one) */}
         {projects.length > 1 && (
           <div className="px-3 pb-2">
-            <div className="space-y-0.5">
+            <div className="space-y-0.5" data-testid="project-list">
               {projects
                 .filter((p) => p.path !== currentProject)
                 .map((project) => (
@@ -111,6 +111,7 @@ export function Sidebar({
             <button
               onClick={onNewZone}
               className="mt-2 text-xs text-blue-500 hover:text-blue-400"
+              data-testid="new-zone"
             >
               Create a zone
             </button>

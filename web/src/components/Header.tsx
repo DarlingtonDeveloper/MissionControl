@@ -40,6 +40,8 @@ export function Header({ onSpawnClick, onNewZoneClick, onSettingsClick }: Header
           }}
           className="flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-400 transition-colors"
           title={connectionStatus === 'disconnected' ? 'Click to reconnect' : undefined}
+          data-testid="connection-status"
+          data-connected={connectionStatus === 'connected'}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${color} ${pulse ? 'animate-pulse' : ''}`} />
           <span>{text}</span>
@@ -49,12 +51,12 @@ export function Header({ onSpawnClick, onNewZoneClick, onSettingsClick }: Header
       {/* Center: Stats bar */}
       <div className="flex items-center gap-4 text-[11px]">
         {/* Total agents */}
-        <div className="text-gray-500">
+        <div className="text-gray-500" data-testid="agent-count">
           <span className="font-mono text-gray-400">{stats.total}</span> agents
         </div>
 
         {/* Total tokens */}
-        <div className="text-gray-500">
+        <div className="text-gray-500" data-testid="token-count">
           <span className="font-mono text-gray-400">{formatTokens(stats.tokens)}</span> tokens
         </div>
 

@@ -105,7 +105,7 @@ export function KingPanel({ onExit, onAgentClick }: KingPanelProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-950 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-gray-950 overflow-hidden" data-testid="king-panel">
       {/* Header with status */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
         <div className="flex items-center gap-3">
@@ -279,6 +279,7 @@ function KingMessageBubble({ message }: KingMessageBubbleProps) {
             ? 'bg-amber-500/20 border border-amber-500/30 rounded-lg rounded-br-sm'
             : 'bg-gray-800/80 border border-gray-700/50 rounded-lg rounded-bl-sm'
         }`}
+        data-testid={isUser ? 'king-user-message' : 'king-response'}
       >
         {/* Thinking (collapsed by default) */}
         {message.thinking && (
