@@ -1,11 +1,13 @@
 # MissionControl — TODO
 
-## Getting Started (v5)
+## Getting Started
 
-1. Read V5-IMPLEMENTATION.md for detailed specs
-2. Start with `mc init` command - it's the foundation
-3. Reference V4-RUST-CONTRACTS.md for Rust structs
-4. Reference PERSONAS-SPEC.md for persona details
+1. Run `mc init` in your project directory to create `.mission/` structure
+2. Start the orchestrator: `cd orchestrator && go run . --workdir /path/to/project`
+3. Start the UI: `cd web && npm run dev`
+4. Open http://localhost:3000 — wizard will guide you through setup
+
+For v5.1 spec details, see `V5.1-SPEC.md`.
 
 ## Completed
 
@@ -39,7 +41,7 @@
 
 ---
 
-## Current: v5 — King + mc CLI
+## Completed: v5 — King + mc CLI ✅
 
 The brain of MissionControl. Make King actually orchestrate.
 
@@ -206,6 +208,50 @@ mc
 
 ---
 
+## Current: v5.1 — Quality of Life
+
+See `V5.1-SPEC.md` for full specification.
+
+### Project Wizard ✅
+- [x] `ProjectWizard` component with step state machine
+- [x] `WorkflowMatrix` component with toggle logic
+- [x] Typing indicator component (300ms delay)
+- [x] `POST /api/projects` — calls `mc init` subprocess
+- [x] `GET /api/projects` — reads from `~/.mission-control/config.json`
+- [x] `DELETE /api/projects/:id` — removes from list (not disk)
+- [x] Sidebar project list with switch capability
+- [x] `mc init` accepts `--path`, `--git`, `--king`, `--config` flags
+- [x] Wizard passes matrix config as JSON file to `mc init`
+
+### Personas Management
+
+**11 Personas:** Researcher, Designer, Architect, Developer, Debugger, Reviewer, Security, Tester, QA, Docs, DevOps
+
+- [ ] Settings panel: enable/disable all 11 personas individually
+- [ ] Per-project persona configuration (stored in `.mission/config.json`)
+- [ ] Persona descriptions visible in Settings
+- [ ] Persona prompt preview/edit capability
+- [ ] Sync persona settings with workflow matrix
+
+### Dynamic Project Switching
+- [ ] Orchestrator API: `POST /api/projects/select` to switch active project
+- [ ] Orchestrator reloads `.mission/state/` watcher on project switch
+- [ ] WebSocket broadcasts project change event
+- [ ] UI reloads state when project switches (no page refresh needed)
+- [ ] Remove need to restart orchestrator with `--workdir` flag
+
+### Other v5.1 Items (from spec)
+- [ ] Documentation cleanup (consolidate to 5 root files)
+- [ ] Repository cleanup (rename v4.go → mission.go, v5.go → king.go)
+- [ ] Testing improvements (Rust tests, integration tests, Playwright E2E)
+- [ ] Startup simplification (`make dev` single command)
+- [ ] Rust core integration (fix token counting)
+- [ ] Token usage display fix
+- [ ] Agent count updates fix
+- [ ] UI polish (loading states, error handling, WebSocket indicator)
+
+---
+
 ## Future: v6 — 3D Visualization
 
 - [ ] React Three Fiber setup
@@ -237,6 +283,7 @@ mc
 | v3 | React UI | ✅ Done |
 | v4 | Rust core | ✅ Done |
 | v5 | King + mc CLI | ✅ Done |
+| v5.1 | Quality of life | 🔄 Current |
 | v6 | 3D visualization | Future |
 | v7+ | Polish & scale | Future |
 
