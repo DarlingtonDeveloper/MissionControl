@@ -79,6 +79,7 @@ func (h *ProjectsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", h.handleProjects)
 	mux.HandleFunc("/api/projects/check", h.handleCheckPath)
 	mux.HandleFunc("/api/projects/", h.handleProject)
+	mux.HandleFunc("/api/browse", h.handleBrowse)
 }
 
 func (h *ProjectsHandler) handleProjects(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +172,7 @@ func (h *ProjectsHandler) listProjects(w http.ResponseWriter, r *http.Request) {
 // CreateProjectRequest is the request body for creating a project
 type CreateProjectRequest struct {
 	Path       string       `json:"path"`
+	Import     bool         `json:"import"`     // If true, import existing .mission project without running mc init
 	InitGit    bool         `json:"initGit"`
 	EnableKing bool         `json:"enableKing"`
 	Matrix     []MatrixCell `json:"matrix"`
@@ -230,49 +232,62 @@ func (h *ProjectsHandler) createProject(w http.ResponseWriter, r *http.Request) 
 		path = filepath.Join(home, path[1:])
 	}
 
-	// Create directory if it doesn't exist
-	if err := os.MkdirAll(path, 0755); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": fmt.Sprintf("Failed to create directory: %v", err),
-		})
-		return
-	}
-
-	// Write matrix config to temp file
-	configFile, err := os.CreateTemp("", "mc-config-*.json")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create config file"})
-		return
-	}
-	defer os.Remove(configFile.Name())
-
-	matrixConfig := map[string]interface{}{
-		"matrix": req.Matrix,
-	}
-	json.NewEncoder(configFile).Encode(matrixConfig)
-	configFile.Close()
-
-	// Build mc init command
-	args := []string{"init", "--path", path}
-	if req.InitGit {
-		args = append(args, "--git")
-	}
-	if req.EnableKing {
-		args = append(args, "--king")
+	// Handle import mode: just validate and add to global config
+	if req.Import {
+		// Validate .mission directory exists
+		missionDir := filepath.Join(path, ".mission")
+		if _, err := os.Stat(missionDir); os.IsNotExist(err) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "No .mission directory found. Cannot import - use create instead.",
+			})
+			return
+		}
+		// Note: config.json validation is optional - project may still work without it
 	} else {
-		args = append(args, "--king=false")
-	}
-	args = append(args, "--config", configFile.Name())
+		// Create directory if it doesn't exist
+		if err := os.MkdirAll(path, 0755); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("Failed to create directory: %v", err),
+			})
+			return
+		}
 
-	// Execute mc init
-	cmd := exec.Command(h.mcPath, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error":  fmt.Sprintf("mc init failed: %v", err),
-			"output": string(output),
-		})
-		return
+		// Write matrix config to temp file
+		configFile, err := os.CreateTemp("", "mc-config-*.json")
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create config file"})
+			return
+		}
+		defer os.Remove(configFile.Name())
+
+		matrixConfig := map[string]interface{}{
+			"matrix": req.Matrix,
+		}
+		json.NewEncoder(configFile).Encode(matrixConfig)
+		configFile.Close()
+
+		// Build mc init command
+		args := []string{"init", "--path", path}
+		if req.InitGit {
+			args = append(args, "--git")
+		}
+		if req.EnableKing {
+			args = append(args, "--king")
+		} else {
+			args = append(args, "--king=false")
+		}
+		args = append(args, "--config", configFile.Name())
+
+		// Execute mc init
+		cmd := exec.Command(h.mcPath, args...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error":  fmt.Sprintf("mc init failed: %v", err),
+				"output": string(output),
+			})
+			return
+		}
 	}
 
 	// Add to global config
@@ -613,4 +628,89 @@ func (h *ProjectsHandler) saveProjectConfig(projectPath string, config *ProjectC
 		return err
 	}
 	return os.WriteFile(configPath, data, 0644)
+}
+
+// DirEntry represents a directory entry for browsing
+type DirEntry struct {
+	Name  string `json:"name"`
+	IsDir bool   `json:"isDir"`
+}
+
+// BrowseResponse is the response for directory browsing
+type BrowseResponse struct {
+	Path    string     `json:"path"`
+	Entries []DirEntry `json:"entries"`
+}
+
+// handleBrowse handles directory browsing requests
+func (h *ProjectsHandler) handleBrowse(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+
+	// Default to home directory if no path specified
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get home directory"})
+			return
+		}
+		path = home
+	}
+
+	// Expand ~ to home directory
+	if strings.HasPrefix(path, "~") {
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, path[1:])
+	}
+
+	// Clean and resolve the path
+	path = filepath.Clean(path)
+
+	// Check if path exists and is a directory
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Path does not exist"})
+		} else {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return
+	}
+
+	if !info.IsDir() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Path is not a directory"})
+		return
+	}
+
+	// Read directory contents
+	dirEntries, err := os.ReadDir(path)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to read directory"})
+		return
+	}
+
+	// Filter to directories only and exclude hidden files
+	entries := make([]DirEntry, 0)
+	for _, entry := range dirEntries {
+		// Skip hidden files/directories (starting with .)
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		// Only include directories
+		if entry.IsDir() {
+			entries = append(entries, DirEntry{
+				Name:  entry.Name(),
+				IsDir: true,
+			})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, BrowseResponse{
+		Path:    path,
+		Entries: entries,
+	})
 }

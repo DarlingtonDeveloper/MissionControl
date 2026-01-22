@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Project, WizardFormData, PathCheckResult } from '../types/project'
+import type { Project, WizardFormData, PathCheckResult, BrowseResult } from '../types/project'
 
 interface ProjectState {
   // State
@@ -109,6 +109,37 @@ export async function checkPath(path: string): Promise<PathCheckResult> {
   if (!res.ok) {
     // Return defaults on error
     return { exists: false, hasGit: false, hasMission: false }
+  }
+  return res.json()
+}
+
+// Import an existing project (with .mission/ already present)
+export async function importProject(path: string): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, import: true })
+  })
+  if (!res.ok) {
+    const errorText = await res.text()
+    try {
+      const errorJson = JSON.parse(errorText)
+      throw new Error(errorJson.error || errorText)
+    } catch {
+      throw new Error(errorText)
+    }
+  }
+  return res.json()
+}
+
+// Browse directories (for folder picker)
+export async function browseDirectory(path?: string): Promise<BrowseResult> {
+  const url = path
+    ? `${API_BASE}/browse?path=${encodeURIComponent(path)}`
+    : `${API_BASE}/browse`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(await res.text())
   }
   return res.json()
 }

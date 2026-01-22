@@ -83,3 +83,15 @@ export interface PathCheckResult {
   hasGit: boolean
   hasMission: boolean
 }
+
+// Directory entry for browsing
+export interface DirEntry {
+  name: string
+  isDir: boolean
+}
+
+// Browse response from API
+export interface BrowseResult {
+  path: string
+  entries: DirEntry[]
+}

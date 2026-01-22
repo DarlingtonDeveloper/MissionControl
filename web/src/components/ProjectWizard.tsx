@@ -3,7 +3,8 @@ import { Modal } from './Modal'
 import { Spinner } from './Spinner'
 import { TypingIndicator } from './TypingIndicator'
 import { WorkflowMatrix } from './WorkflowMatrix'
-import { useProjectStore, createProject, checkPath } from '../stores/useProjectStore'
+import { FolderPicker } from './FolderPicker'
+import { useProjectStore, createProject, checkPath, importProject } from '../stores/useProjectStore'
 import { toast } from '../stores/useToast'
 import type { WizardStep, MatrixCell, Audience, PathCheckResult } from '../types/project'
 import { buildInitialMatrix } from '../types/project'
@@ -29,6 +30,7 @@ export function ProjectWizard() {
   const [initGit, setInitGit] = useState(true)
   const [enableKing, setEnableKing] = useState(true)
   const [matrix, setMatrix] = useState<MatrixCell[]>([])
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
 
   // Reset on open
   useEffect(() => {
@@ -72,12 +74,22 @@ export function ProjectWizard() {
     return () => clearTimeout(timer)
   }, [path, doCheckPath])
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (pathStatus.hasMission) {
-      // Open existing project instead
-      setCurrentProject(path)
-      closeWizard()
-      toast.success('Opened existing project')
+      // Import existing project
+      setLoading(true)
+      setError('')
+      try {
+        const project = await importProject(path)
+        addProject(project)
+        setCurrentProject(project.path)
+        closeWizard()
+        toast.success(`Imported project "${project.name}"`)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to import project')
+      } finally {
+        setLoading(false)
+      }
       return
     }
     setStep('matrix')
@@ -106,7 +118,8 @@ export function ProjectWizard() {
   }
 
   return (
-    <Modal open={wizardOpen} onClose={closeWizard} title="New Project" width="lg">
+    <>
+    <Modal open={wizardOpen} onClose={closeWizard} title={pathStatus.hasMission ? "Import Project" : "New Project"} width="lg">
       {step === 'setup' ? (
         <div className="space-y-6">
           {/* Conversational prompt */}
@@ -127,10 +140,17 @@ export function ProjectWizard() {
                 className="flex-1 px-3 py-2 text-sm font-mono bg-gray-800 border border-gray-700/50 rounded text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-600"
                 autoFocus
               />
+              <button
+                type="button"
+                onClick={() => setFolderPickerOpen(true)}
+                className="px-3 py-2 text-sm text-gray-300 bg-gray-800 border border-gray-700/50 hover:bg-gray-700 rounded transition-colors"
+              >
+                Browse
+              </button>
             </div>
             {pathStatus.hasMission && (
-              <p className="mt-1 text-[10px] text-amber-400">
-                Project already exists at this path. Click Continue to open it.
+              <p className="mt-1 text-[10px] text-green-400">
+                Found existing MissionControl project. Click "Import" to add it to your workspace.
               </p>
             )}
             {pathStatus.hasGit && !pathStatus.hasMission && (
@@ -143,66 +163,77 @@ export function ProjectWizard() {
             )}
           </div>
 
-          {/* Audience selector */}
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1.5">Who's it for?</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAudience('personal')}
-                className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
-                  audience === 'personal'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}
-              >
-                Personal
-              </button>
-              <button
-                type="button"
-                onClick={() => setAudience('customers')}
-                className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
-                  audience === 'customers'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}
-              >
-                Customers
-              </button>
-            </div>
-            <p className="mt-1 text-[10px] text-gray-600">
-              {audience === 'personal'
-                ? 'Personal projects skip Security, QA, and DevOps by default'
-                : 'Customer-facing projects enable all workflow steps'}
-            </p>
-          </div>
+          {/* Audience selector and options - hidden when importing existing project */}
+          {!pathStatus.hasMission && (
+            <>
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1.5">Who's it for?</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAudience('personal')}
+                    className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
+                      audience === 'personal'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    Personal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAudience('customers')}
+                    className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
+                      audience === 'customers'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    Customers
+                  </button>
+                </div>
+                <p className="mt-1 text-[10px] text-gray-600">
+                  {audience === 'personal'
+                    ? 'Personal projects skip Security, QA, and DevOps by default'
+                    : 'Customer-facing projects enable all workflow steps'}
+                </p>
+              </div>
 
-          {/* Checkboxes */}
-          <div className="space-y-3">
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={initGit}
-                onChange={(e) => setInitGit(e.target.checked)}
-                disabled={pathStatus.hasGit || pathStatus.hasMission}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
-              />
-              <span
-                className={`text-sm ${pathStatus.hasGit ? 'text-gray-600' : 'text-gray-300'}`}
-              >
-                Initialize git
-              </span>
-            </label>
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={enableKing}
-                onChange={(e) => setEnableKing(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
-              />
-              <span className="text-sm text-gray-300">Enable King (recommended)</span>
-            </label>
-          </div>
+              {/* Checkboxes */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={initGit}
+                    onChange={(e) => setInitGit(e.target.checked)}
+                    disabled={pathStatus.hasGit}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                  />
+                  <span
+                    className={`text-sm ${pathStatus.hasGit ? 'text-gray-600' : 'text-gray-300'}`}
+                  >
+                    Initialize git
+                  </span>
+                </label>
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={enableKing}
+                    onChange={(e) => setEnableKing(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                  />
+                  <span className="text-sm text-gray-300">Enable King (recommended)</span>
+                </label>
+              </div>
+            </>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="px-3 py-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded">
+              {error}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">
@@ -216,10 +247,13 @@ export function ProjectWizard() {
             <button
               type="button"
               onClick={handleContinue}
-              disabled={!path.trim()}
-              className="flex-1 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed rounded transition-colors"
+              disabled={!path.trim() || loading}
+              className="flex-1 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed rounded transition-colors flex items-center justify-center gap-2"
             >
-              {pathStatus.hasMission ? 'Open Project' : 'Continue →'}
+              {loading && <Spinner size="sm" />}
+              {pathStatus.hasMission
+                ? (loading ? 'Importing...' : 'Import Project')
+                : 'Continue →'}
             </button>
           </div>
         </div>
@@ -263,5 +297,13 @@ export function ProjectWizard() {
         </div>
       )}
     </Modal>
+
+    <FolderPicker
+      open={folderPickerOpen}
+      onClose={() => setFolderPickerOpen(false)}
+      onSelect={setPath}
+      initialPath={path || undefined}
+    />
+    </>
   )
 }
