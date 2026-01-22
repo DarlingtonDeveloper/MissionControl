@@ -12,6 +12,7 @@ import (
 	"github.com/mike/mission-control/api"
 	"github.com/mike/mission-control/bridge"
 	"github.com/mike/mission-control/manager"
+	"github.com/mike/mission-control/terminal"
 	"github.com/mike/mission-control/v4"
 	"github.com/mike/mission-control/watcher"
 	"github.com/mike/mission-control/ws"
@@ -142,6 +143,10 @@ func main() {
 
 	// WebSocket endpoint
 	mux.HandleFunc("/ws", hub.HandleWebSocket)
+
+	// Terminal PTY WebSocket endpoint
+	ptyHandler := terminal.NewPTYHandler()
+	mux.HandleFunc("/api/terminal", ptyHandler.HandleWebSocket)
 
 	// Simple status page
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

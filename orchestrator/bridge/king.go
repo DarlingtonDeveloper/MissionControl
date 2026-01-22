@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -81,6 +82,27 @@ func findClaude() string {
 		return path
 	}
 	return "claude"
+}
+
+// findMcProtocol returns the path to mc-protocol binary
+func findMcProtocol() string {
+	// Check relative to working directory first (in core/target)
+	paths := []string{
+		"../core/target/release/mc-protocol",
+		"../core/target/debug/mc-protocol",
+		"/opt/homebrew/bin/mc-protocol",
+		"/usr/local/bin/mc-protocol",
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			absPath, _ := filepath.Abs(p)
+			return absPath
+		}
+	}
+	if path, err := exec.LookPath("mc-protocol"); err == nil {
+		return path
+	}
+	return ""
 }
 
 // KingAgentID is the fixed agent ID for King in the agents list
@@ -183,6 +205,15 @@ func (k *King) Start() error {
 		return fmt.Errorf(".mission/CLAUDE.md not found - run 'mc init' first")
 	}
 
+	// Initialize file protocol directories for future use
+	fileProtocolDirs := []string{"tasks", "responses", "status"}
+	for _, dir := range fileProtocolDirs {
+		dirPath := filepath.Join(k.missionDir, dir)
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			log.Printf("Warning: failed to create %s directory: %v", dir, err)
+		}
+	}
+
 	k.status = KingStatusStarting
 
 	// Kill existing session if present
@@ -253,7 +284,68 @@ func (k *King) Start() error {
 		},
 	})
 
+	// Start token monitoring goroutine
+	go k.monitorTokens()
+
 	return nil
+}
+
+// monitorTokens periodically checks token usage via mc-protocol
+func (k *King) monitorTokens() {
+	mcProtocolPath := findMcProtocol()
+	if mcProtocolPath == "" {
+		log.Printf("mc-protocol binary not found, token tracking disabled")
+		return
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	var lastTokens int
+
+	for {
+		select {
+		case <-k.stopChan:
+			return
+		case <-ticker.C:
+			// Call mc-protocol count-tokens
+			cmd := exec.Command(mcProtocolPath, "count-tokens", "--mission-dir", k.missionDir)
+			output, err := cmd.Output()
+			if err != nil {
+				// File might not exist yet, that's ok
+				continue
+			}
+
+			// Parse JSON output
+			var result struct {
+				TotalTokens      int     `json:"total_tokens"`
+				EstimatedCostUSD float64 `json:"estimated_cost_usd"`
+			}
+			if err := json.Unmarshal(output, &result); err != nil {
+				log.Printf("Failed to parse mc-protocol output: %v", err)
+				continue
+			}
+
+			// Only emit if tokens changed
+			if result.TotalTokens != lastTokens {
+				lastTokens = result.TotalTokens
+
+				k.mu.Lock()
+				k.totalTokens = result.TotalTokens
+				k.totalCost = result.EstimatedCostUSD
+				k.mu.Unlock()
+
+				// Emit tokens_updated event
+				k.emitEvent("tokens_updated", map[string]interface{}{
+					"agent_id": KingAgentID,
+					"tokens":   result.TotalTokens,
+					"cost":     result.EstimatedCostUSD,
+				})
+
+				log.Printf("King tokens updated: %d tokens, $%.4f", result.TotalTokens, result.EstimatedCostUSD)
+			}
+		}
+	}
 }
 
 // killSession kills the tmux session

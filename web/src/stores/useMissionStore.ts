@@ -85,6 +85,8 @@ export type V5Event =
   | { type: 'king_output'; data: unknown }
   | { type: 'king_message'; data: { role: string; content: string; timestamp: number } }
   | { type: 'king_status'; is_running: boolean }
+  | { type: 'king_started'; started_at: string }
+  | { type: 'king_stopped' }
   | { type: 'king_question'; data: KingQuestion }
 
 export const useMissionStore = create<MissionState>()((set, get) => ({
@@ -212,6 +214,14 @@ export const useMissionStore = create<MissionState>()((set, get) => ({
 
       case 'king_status':
         set({ kingRunning: event.is_running })
+        break
+
+      case 'king_started':
+        set({ kingRunning: true })
+        break
+
+      case 'king_stopped':
+        set({ kingRunning: false, kingQuestion: null })
         break
 
       case 'king_output':

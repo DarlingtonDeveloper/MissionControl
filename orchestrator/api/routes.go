@@ -30,8 +30,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("/api/zones", h.handleZones)
 	mux.HandleFunc("/api/zones/", h.handleZone)
 
-	// King mode routes
-	mux.HandleFunc("/api/king/message", h.handleKingMessage)
+	// NOTE: King routes (/api/king/*) are handled by KingHandler, not here
+	// The KingHandler uses bridge.King which runs Claude in tmux
 
 	// Health check
 	mux.HandleFunc("/api/health", h.handleHealth)
@@ -364,38 +364,5 @@ func (h *Handler) deleteZone(w http.ResponseWriter, r *http.Request, id string) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// King Mode handlers
-
-// KingMessageRequest represents a message to the King
-type KingMessageRequest struct {
-	Content string `json:"content"`
-}
-
-// handleKingMessage handles POST /api/king/message
-func (h *Handler) handleKingMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req KingMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if req.Content == "" {
-		http.Error(w, "content is required", http.StatusBadRequest)
-		return
-	}
-
-	// Send to King agent via manager
-	if err := h.Manager.SendKingMessage(req.Content); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
-}
+// NOTE: King Mode handlers are in api/king.go via KingHandler
+// They use bridge.King which runs Claude in a tmux session

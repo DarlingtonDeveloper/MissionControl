@@ -126,6 +126,16 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 			}
 			writeJSON(tasksPath, tasksState)
 		}
+
+		// Create status file for protocol completion detection
+		// This signals to the orchestrator that the task is complete
+		if handoff.Status == "complete" {
+			statusDir := filepath.Join(missionDir, "status")
+			if err := os.MkdirAll(statusDir, 0755); err == nil {
+				statusPath := filepath.Join(statusDir, fmt.Sprintf("task-%s.status", handoff.TaskID))
+				os.WriteFile(statusPath, []byte("DONE\n"), 0644)
+			}
+		}
 	}
 
 	// Update worker status

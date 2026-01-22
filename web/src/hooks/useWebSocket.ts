@@ -415,6 +415,14 @@ export function useWebSocket() {
         useMissionStore.getState().handleEvent(data as V5Event)
         break
 
+      case 'king_started':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
+      case 'king_stopped':
+        useMissionStore.getState().handleEvent(data as V5Event)
+        break
+
       case 'king_question':
         // Claude is asking a question - forward to mission store
         if (data.data && typeof data.data === 'object') {

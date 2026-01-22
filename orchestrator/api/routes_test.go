@@ -278,21 +278,8 @@ func TestMoveAgentEndpoint(t *testing.T) {
 	}
 }
 
-func TestKingMessageWithoutContent(t *testing.T) {
-	h := newTestHandler()
-	routes := h.Routes()
-
-	body := bytes.NewBufferString(`{}`)
-	req := httptest.NewRequest("POST", "/api/king/message", body)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	routes.ServeHTTP(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
-	}
-}
+// NOTE: TestKingMessageWithoutContent removed - King routes are now handled by KingHandler (api/king.go)
+// not by the main Routes() handler
 
 func TestCORSHeaders(t *testing.T) {
 	h := newTestHandler()

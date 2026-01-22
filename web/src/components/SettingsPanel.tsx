@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Modal } from './Modal'
 import { useStore, fetchPersonaPrompt, updatePersonaPrompt } from '../stores/useStore'
 import { useProjectStore } from '../stores/useProjectStore'
