@@ -294,6 +294,20 @@ func (h *ProjectsHandler) createProject(w http.ResponseWriter, r *http.Request) 
 			})
 			return
 		}
+
+		// Update project config with mode and ollamaModel if specified
+		if req.Mode != "" || req.OllamaModel != "" {
+			projectConfig, err := h.loadProjectConfig(path)
+			if err == nil && projectConfig != nil {
+				if req.Mode != "" {
+					projectConfig.Mode = req.Mode
+				}
+				if req.OllamaModel != "" {
+					projectConfig.OllamaModel = req.OllamaModel
+				}
+				h.saveProjectConfig(path, projectConfig)
+			}
+		}
 	}
 
 	// Add to global config

@@ -5,7 +5,7 @@ import { TypingIndicator } from './TypingIndicator'
 import { WorkflowMatrix } from './WorkflowMatrix'
 import { FolderPicker } from './FolderPicker'
 import { useProjectStore, createProject, checkPath, importProject } from '../stores/useProjectStore'
-import { fetchOllamaStatus, type OllamaStatus } from '../stores/useStore'
+import { fetchOllamaStatus, type OllamaStatus, useStore } from '../stores/useStore'
 import { toast } from '../stores/useToast'
 import type { WizardStep, MatrixCell, Audience, PathCheckResult } from '../types/project'
 import { buildInitialMatrix } from '../types/project'
@@ -15,6 +15,7 @@ export function ProjectWizard() {
   const closeWizard = useProjectStore((s) => s.closeWizard)
   const addProject = useProjectStore((s) => s.addProject)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
+  const setKingMode = useStore((s) => s.setKingMode)
 
   const [step, setStep] = useState<WizardStep>('setup')
   const [loading, setLoading] = useState(false)
@@ -137,6 +138,12 @@ export function ProjectWizard() {
       addProject(project)
       setCurrentProject(project.path)
       closeWizard()
+
+      // Auto-enable King mode if enableKing was checked
+      if (enableKing) {
+        setKingMode(true)
+      }
+
       toast.success(`Project "${project.name}" created`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project')

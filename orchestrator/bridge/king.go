@@ -118,17 +118,21 @@ type King struct {
 	events       chan KingEvent
 	mu           sync.RWMutex
 	stopChan     chan struct{}
-	lastPane     string       // Last captured pane state for diff detection
-	totalTokens  int          // Cumulative token count
-	totalCost    float64      // Cumulative cost (estimated)
+	lastPane     string        // Last captured pane state for diff detection
+	totalTokens  int           // Cumulative token count
+	totalCost    float64       // Cumulative cost (estimated)
 	fileProtocol *FileProtocol // File-based completion detection
+
+	// Offline mode configuration (loaded from project config)
+	offlineMode bool
+	ollamaModel string
 }
 
 // NewKing creates a new King manager
 func NewKing(workDir string) *King {
 	missionDir := filepath.Join(workDir, ".mission")
 
-	return &King{
+	k := &King{
 		missionDir:   missionDir,
 		workDir:      workDir,
 		status:       KingStatusStopped,
@@ -137,6 +141,17 @@ func NewKing(workDir string) *King {
 		stopChan:     make(chan struct{}),
 		fileProtocol: NewFileProtocol(missionDir, kingTmuxSession),
 	}
+
+	// Load project config for offline mode
+	if config, err := LoadProjectConfig(workDir); err == nil {
+		if config.Mode == "offline" {
+			k.offlineMode = true
+			k.ollamaModel = config.OllamaModel
+			log.Printf("King: offline mode configured with model %s", k.ollamaModel)
+		}
+	}
+
+	return k
 }
 
 // Events returns the channel for King events
@@ -250,7 +265,23 @@ func (k *King) Start() error {
 
 	// Start Claude in the session
 	claudePath := findClaude()
-	_, err := k.tmuxCmd("send-keys", "-t", k.tmuxSession, claudePath, "Enter")
+	var claudeCmd string
+
+	if k.offlineMode {
+		// For offline mode, set environment variables inline with the command
+		// This ensures they're available when claude starts
+		envPrefix := "ANTHROPIC_BASE_URL=http://localhost:11434 ANTHROPIC_AUTH_TOKEN=ollama CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+		if k.ollamaModel != "" {
+			claudeCmd = fmt.Sprintf("%s %s --model %s", envPrefix, claudePath, k.ollamaModel)
+		} else {
+			claudeCmd = fmt.Sprintf("%s %s", envPrefix, claudePath)
+		}
+		log.Printf("King: starting in offline mode with model %s", k.ollamaModel)
+	} else {
+		claudeCmd = claudePath
+	}
+
+	_, err := k.tmuxCmd("send-keys", "-t", k.tmuxSession, claudeCmd, "Enter")
 	if err != nil {
 		k.killSession()
 		k.status = KingStatusError
