@@ -6,25 +6,35 @@ Inspired by [Vibecraft](https://vibecraft.dev), [Ralv](https://ralv.dev), and [G
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Web UI (React)                          │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │
-│   │  King   │  │  Zones  │  │ Agents  │  │Settings │       │
-│   │  Panel  │  │  List   │  │  Panel  │  │  Panel  │       │
-│   └─────────┘  └─────────┘  └─────────┘  └─────────┘       │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ WebSocket
-┌───────────────────────▼─────────────────────────────────────┐
-│                   Go Bridge (v5)                             │
-│   King Process │ Watcher │ mc CLI │ WebSocket Hub           │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ spawns Claude Code
-         ┌──────────────┼──────────────┐
-         ▼              ▼              ▼
-      King           Worker         Worker
-  (Claude Code)   (Claude Code)  (Claude Code)
-  .mission/CLAUDE.md  persona prompt   persona prompt
+```mermaid
+flowchart TB
+    subgraph UI["Web UI (React)"]
+        KP[King Panel]
+        ZL[Zones]
+        AP[Agents]
+        SP[Settings]
+    end
+
+    subgraph Bridge["Go Bridge (v5)"]
+        direction LR
+        KM[King Process]
+        FW[Watcher]
+        CLI[mc CLI]
+        WS[WebSocket Hub]
+    end
+
+    subgraph Agents["Claude Code Sessions"]
+        KING["King<br/>.mission/CLAUDE.md"]
+        W1["Worker 1<br/>persona prompt"]
+        W2["Worker 2<br/>persona prompt"]
+    end
+
+    UI <-->|WebSocket| WS
+    KM -->|spawns| KING
+    KM -->|spawns| W1
+    KM -->|spawns| W2
+    FW -->|watches| STATE[.mission/state/]
+    FW -->|emits| WS
 ```
 
 **Key insight:** King IS a Claude Code session with a good system prompt. Go bridge spawns processes and relays events — no custom LLM API calls.
@@ -38,9 +48,19 @@ The King is the only persistent agent. It talks to you, decides what to build, s
 Workers are ephemeral. They receive a **briefing** (~300 tokens), do their task, output **findings**, and die. This keeps context lean and costs low.
 
 ### 6-Phase Workflow
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> IDEA
+    IDEA --> DESIGN : ✓ Gate
+    DESIGN --> IMPLEMENT : ✓ Gate
+    IMPLEMENT --> VERIFY : ✓ Gate
+    VERIFY --> DOCUMENT : ✓ Gate
+    DOCUMENT --> RELEASE : ✓ Gate
+    RELEASE --> [*]
 ```
-IDEA → DESIGN → IMPLEMENT → VERIFY → DOCUMENT → RELEASE
-```
+
 Each phase has a **gate** requiring approval before proceeding.
 
 ### Zones
@@ -57,44 +77,6 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
 | v5 | ✅ Done | King orchestration + mc CLI (64 tests) |
 | v6 | 📋 Planned | 3D visualization + polish |
 
-## v5 Features
-
-- **mc CLI** — Command-line tool for MissionControl orchestration
-  - `mc init` — Create `.mission/` scaffold with King + worker prompts
-  - `mc status` — JSON dump of phase, tasks, workers, gates
-  - `mc phase` — Get/set current workflow phase
-  - `mc task` — Create, list, update tasks
-  - `mc spawn` — Spawn Claude Code worker process
-  - `mc kill` — Kill worker process
-  - `mc handoff` — Validate and store worker handoff (supports `--rust` flag)
-  - `mc gate` — Check/approve phase gates
-  - `mc workers` — List active workers with health check
-- **mc-core** — Rust CLI for validation and token counting
-  - `mc-core validate-handoff <file>` — Schema + semantic validation
-  - `mc-core check-gate <phase>` — Gate criteria evaluation
-  - `mc-core count-tokens <file>` — Fast token counting with tiktoken
-- **Go Bridge** — WebSocket events for real-time state sync
-  - File watcher on `.mission/state/`
-  - King process management (start, stop, message)
-  - Automatic event broadcast on state changes
-- **React UI Updates**
-  - King status indicator with start/stop controls
-  - Workers panel showing active/completed/errored workers
-  - Findings viewer with type filtering
-  - v5 WebSocket event handlers
-- **King as Claude Code** — King IS a Claude Code session with CLAUDE.md prompt
-- **64 Tests** — 8 Go CLI + 56 Rust core tests
-
-## v3 Features
-
-- **Zone System** — Create, edit, split, merge zones; move agents between zones
-- **Persona System** — 4 default personas + custom creation
-- **King Mode** — UI shell with KingPanel, TeamOverview
-- **Attention System** — Notifications with quick response buttons
-- **Settings** — General, Personas, Shortcuts tabs
-- **Keyboard Shortcuts** — ⌘N spawn, ⌘K kill, ⌘⇧K king mode, etc.
-- **81 Unit Tests** — 29 Go + 52 React
-
 ## Stack
 
 | Component | Language | Purpose |
@@ -107,6 +89,8 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
 | **Strategy** | Claude Opus | King agent (v5) |
 | **Workers** | Claude Sonnet/Haiku | Task execution |
 | **UI** | React | Dashboard with Zustand state |
+
+- **81 Unit Tests** — 29 Go + 52 React
 
 ## Installation
 
@@ -207,140 +191,57 @@ curl -X POST localhost:8080/api/mission/gates/idea/approve
 curl -X POST localhost:8080/api/agents \
   -H "Content-Type: application/json" \
   -d '{"type": "claude-code", "task": "review hello.py", "workingDir": "."}'
-
-# List agents
-curl localhost:8080/api/agents
 ```
 
-### Web Dashboard (v3)
+## v5 Features
+
+- **mc CLI** — Command-line tool for MissionControl orchestration
+  - `mc init` — Create `.mission/` scaffold with King + worker prompts
+  - `mc status` — JSON dump of phase, tasks, workers, gates
+  - `mc phase` — Get/set current workflow phase
+  - `mc task` — Create, list, update tasks
+  - `mc spawn` — Spawn Claude Code worker process
+  - `mc kill` — Kill worker process
+  - `mc handoff` — Validate and store worker handoff (supports `--rust` flag)
+  - `mc gate` — Check/approve phase gates
+  - `mc workers` — List active workers with health check
+- **mc-core** — Rust CLI for validation and token counting
+  - `mc-core validate-handoff <file>` — Schema + semantic validation
+  - `mc-core check-gate <phase>` — Gate criteria evaluation
+  - `mc-core count-tokens <file>` — Fast token counting with tiktoken
+- **Go Bridge** — WebSocket events for real-time state sync
+  - File watcher on `.mission/state/`
+  - King process management (start, stop, message)
+  - Automatic event broadcast on state changes
+- **React UI Updates**
+  - King status indicator with start/stop controls
+  - Workers panel showing active/completed/errored workers
+  - Findings viewer with type filtering
+  - v5 WebSocket event handlers
+- **King as Claude Code** — King IS a Claude Code session with CLAUDE.md prompt
+- **64 Tests** — 8 Go CLI + 56 Rust core tests
+
+## v3 Features
+
+- **Zone System** — Create, edit, split, merge zones; move agents between zones
+- **Persona System** — 4 default personas + custom creation
+- **King Mode** — UI shell with KingPanel, TeamOverview
+- **Attention System** — Notifications with quick response buttons
+- **Settings** — General, Personas, Shortcuts tabs
+- **Keyboard Shortcuts** — ⌘N spawn, ⌘K kill, ⌘⇧K king mode, etc.
+
+## Development
 
 ```bash
-cd web
-npm install
-npm run dev
-# Open http://localhost:3000
-```
-
-### Running Tests
-
-```bash
-# All tests via Makefile
-make test
-
-# Go mc CLI tests (8 tests)
-cd cmd/mc && go test -v ./...
-
-# Go orchestrator tests
-cd orchestrator && go test ./...
-
-# Rust core tests (56 tests)
-cd core && cargo test
-
-# React frontend tests (52 tests)
-cd web && npm test
-```
-
-### Building Releases
-
-```bash
-# Build all components
+# Build all
 make build
 
-# Build for specific platform
-make release-darwin-arm64
+# Run tests
+make test
 
-# Create release tarballs
-make release
-
-# Install locally (macOS)
-make install
+# Start dev environment
+make dev
 ```
 
-## Requirements
-
-- Python 3.11+ with `anthropic` package
-- Go 1.21+
-- Rust 1.75+ (for v4+ core)
-- Node.js 18+ (for web UI)
-- `ANTHROPIC_API_KEY` environment variable
-- Claude Code CLI (for claude-code agent type)
-
-## API Endpoints
-
-### Agents
-```
-POST   /api/agents              # Spawn agent
-GET    /api/agents              # List agents
-DELETE /api/agents/:id          # Kill agent
-POST   /api/agents/:id/message  # Send message
-POST   /api/agents/:id/respond  # Respond to attention
-```
-
-### Zones
-```
-POST   /api/zones               # Create zone
-GET    /api/zones               # List zones
-PUT    /api/zones/:id           # Update zone
-DELETE /api/zones/:id           # Delete zone
-```
-
-### King (v5)
-```
-POST   /api/king/start          # Start King process
-POST   /api/king/stop           # Stop King process
-GET    /api/king/status         # Check if King is running
-POST   /api/king/message        # Send message to King
-```
-
-### Mission Gates (v5)
-```
-GET    /api/mission/gates/:phase          # Check gate status
-POST   /api/mission/gates/:phase/approve  # Approve gate
-```
-
-### WebSocket Events (v5)
-```
-mission_state      # Initial state sync
-king_status        # King running status
-phase_changed      # Phase transitioned
-task_created       # New task created
-task_updated       # Task status changed
-worker_spawned     # Worker started
-worker_completed   # Worker finished
-gate_ready         # Gate criteria met
-gate_approved      # Gate approved
-findings_ready     # New findings available
-king_output        # King process output
-king_error         # King process error
-```
-
-## Worker Personas
-
-| Persona | Phase | Model | Purpose |
-|---------|-------|-------|---------|
-| Researcher | Idea | Sonnet | Feasibility research |
-| Designer | Design | Sonnet | UI mockups |
-| Architect | Design | Sonnet | System design |
-| Developer | Implement | Sonnet | Build features |
-| Debugger | Implement | Sonnet | Fix issues |
-| Reviewer | Verify | Haiku | Code review |
-| Security | Verify | Sonnet | Vulnerability check |
-| Tester | Verify | Haiku | Write tests |
-| QA | Verify | Haiku | E2E validation |
-| Docs | Document | Haiku | Documentation |
-| DevOps | Release | Haiku | Deployment |
-
-## Docs
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — How it works
-- [CONTRIBUTING.md](CONTRIBUTING.md) — Development guide
-- [CHANGELOG.md](CHANGELOG.md) — Version history
-- [TODO.md](TODO.md) — Active tasks
-
-## Future Ideas
-
-- **Conductor Skill** — Claude Code skill that spawns agents via our CLI
-- **Wizard Agent** — Meta-agent that orchestrates other agents
-- **Multi-Model** — Codex CLI, Gemini, Grok alongside Claude
-- **Remote Access** — Control from phone via cloudflared tunnel
-- **Persistence** — Beads/SQLite for cross-session memory
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed system documentation.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup.

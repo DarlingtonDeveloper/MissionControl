@@ -4,45 +4,77 @@ MissionControl is a visual multi-agent orchestration system where a **King** age
 
 ## System Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Web UI (React)                          │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │
-│   │  King   │  │  Zones  │  │ Agents  │  │Settings │       │
-│   │  Panel  │  │  List   │  │  Panel  │  │  Panel  │       │
-│   └─────────┘  └─────────┘  └─────────┘  └─────────┘       │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ WebSocket
-┌───────────────────────▼─────────────────────────────────────┐
-│                   Go Bridge                                  │
-│   King Process │ Watcher │ mc CLI │ WebSocket Hub           │
-└───────────┬───────────────────────────────┬─────────────────┘
-            │ spawns Claude Code            │ subprocess
-            │                               ▼
-            │                    ┌─────────────────────┐
-            │                    │   Rust Core         │
-            │                    │   (mc-core)         │
-            │                    ├─────────────────────┤
-            │                    │ • Token counting    │
-            │                    │ • Handoff validation│
-            │                    │ • Gate checking     │
-            │                    └─────────────────────┘
-            │
-  ┌─────────┼──────────────┐
-  ▼         ▼              ▼
-King      Worker         Worker
-(Claude)  (Claude)       (Claude)
+```mermaid
+flowchart TB
+    subgraph UI["Web UI (React)"]
+        KP[King Panel]
+        ZL[Zones List]
+        AP[Agents Panel]
+        SP[Settings Panel]
+    end
+
+    subgraph Bridge["Go Bridge"]
+        WS[WebSocket Hub]
+        KM[King Manager]
+        FW[File Watcher]
+        REST[REST API]
+        CLI[mc CLI]
+    end
+
+    subgraph Core["Rust Core (mc-core)"]
+        VAL[Handoff Validator]
+        TOK[Token Counter]
+        GATE[Gate Checker]
+    end
+
+    subgraph Agents["Claude Code Sessions"]
+        KING[King Agent]
+        W1[Worker 1]
+        W2[Worker 2]
+        W3[Worker N]
+    end
+
+    subgraph State[".mission/ Directory"]
+        CLAUDE[CLAUDE.md]
+        STATE[state/]
+        SPECS[specs/]
+        FIND[findings/]
+        HAND[handoffs/]
+    end
+
+    UI <-->|WebSocket| WS
+    UI -->|HTTP| REST
+    WS --> KM
+    KM -->|spawns| KING
+    KM -->|spawns| W1
+    KM -->|spawns| W2
+    KM -->|spawns| W3
+    FW -->|watches| STATE
+    FW -->|emits events| WS
+    CLI --> Core
+    KING -->|reads| CLAUDE
+    KING -->|calls| CLI
+    W1 -->|writes| FIND
+    W2 -->|writes| FIND
+    W3 -->|writes| FIND
+    CLI -->|validates| VAL
+    CLI -->|counts| TOK
+    CLI -->|checks| GATE
 ```
 
 **Key insight:** King IS a Claude Code session with a good system prompt. Go bridge spawns processes and relays events — no custom LLM API calls. Rust core handles deterministic operations (validation, token counting) that shouldn't consume LLM tokens.
 
 ### What We're NOT Building
-- Custom orchestration loop — Claude Code IS the orchestration
-- LLM API integration in Go — King handles all LLM interaction
-- Agent-to-agent message queue — workers write findings to files
-- Context compilation service — .mission/ files ARE the context
+
+| Thing | Why Not |
+|-------|---------|
+| Custom orchestration loop | Claude Code IS the orchestration |
+| LLM API integration in Go | King handles all LLM interaction |
+| Agent-to-agent message queue | Workers write findings to files |
+| Context compilation service | .mission/ files ARE the context |
 
 ### How King Orchestrates
+
 King is a Claude Code session with `.mission/CLAUDE.md` as its system prompt. It orchestrates by:
 - Using bash to call `mc spawn`, `mc status`, `mc handoff`, `mc gate`
 - Reading/writing `.mission/` files directly (specs, findings, state)
@@ -57,13 +89,41 @@ The King is the only persistent agent. It talks to you, decides what to build, s
 Workers are ephemeral. They receive a **briefing** (~300 tokens), do their task, output **findings**, and die. This keeps context lean and costs low.
 
 ### 6-Phase Workflow
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDEA
+    IDEA --> DESIGN : Gate Approved
+    DESIGN --> IMPLEMENT : Gate Approved
+    IMPLEMENT --> VERIFY : Gate Approved
+    VERIFY --> DOCUMENT : Gate Approved
+    DOCUMENT --> RELEASE : Gate Approved
+    RELEASE --> [*] : Complete
 ```
-IDEA → DESIGN → IMPLEMENT → VERIFY → DOCUMENT → RELEASE
-```
+
 Each phase has a **gate** requiring approval before proceeding.
 
+| Phase | Purpose | Workers | Gate Criteria |
+|-------|---------|---------|---------------|
+| **Idea** | Research feasibility | Researcher | Spec drafted, feasibility assessed |
+| **Design** | UI mockups + system design | Designer, Architect | Mockups + API design approved |
+| **Implement** | Build features | Developer, Debugger | Code complete, builds |
+| **Verify** | Quality checks | Reviewer, Security, Tester, QA | All checks pass |
+| **Document** | README + docs | Docs | Docs complete |
+| **Release** | Deploy | DevOps | Deployed, verified |
+
 ### Zones
+
 Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Workers are assigned to zones and stay in their lane.
+
+```mermaid
+graph TD
+    SYS[System] --> FE[Frontend]
+    SYS --> BE[Backend]
+    SYS --> DB[Database]
+    SYS --> INF[Infra]
+    SYS --> SH[Shared]
+```
 
 ## Directory Structure
 
@@ -116,19 +176,37 @@ Zones organize the codebase (Frontend, Backend, Database, Infra, Shared). Worker
 
 ## mc CLI
 
+```mermaid
+graph TD
+    MC[mc]
+    MC --> INIT[init]
+    MC --> SPAWN[spawn]
+    MC --> KILL[kill]
+    MC --> STATUS[status]
+    MC --> WORKERS[workers]
+    MC --> HANDOFF[handoff]
+    MC --> GATE[gate]
+    MC --> PHASE[phase]
+    MC --> TASK[task]
+    MC --> SERVE[serve]
 ```
-mc
-├── init       # Create .mission/ scaffold
-├── spawn      # Spawn worker process
-├── kill       # Kill worker process
-├── status     # JSON dump of state
-├── workers    # List active workers
-├── handoff    # Validate and store handoff
-├── gate       # Check/approve gates
-├── phase      # Get/set phase
-├── task       # CRUD for tasks
-└── serve      # Start Go bridge + UI
-```
+
+| Command | Purpose |
+|---------|---------|
+| `mc init` | Create .mission/ scaffold |
+| `mc spawn <persona> <task> --zone <z>` | Spawn worker process |
+| `mc kill <worker-id>` | Kill worker process |
+| `mc status` | JSON dump of state |
+| `mc workers` | List active workers |
+| `mc handoff <file>` | Validate and store handoff |
+| `mc gate check <phase>` | Check gate criteria |
+| `mc gate approve <phase>` | Approve gate |
+| `mc phase` | Get current phase |
+| `mc phase next` | Transition to next phase |
+| `mc task create <n> --phase <p>` | Create task |
+| `mc task list` | List tasks |
+| `mc task update <id> --status <s>` | Update task status |
+| `mc serve` | Start Go bridge + UI |
 
 ## mc-core (Rust)
 
@@ -172,60 +250,122 @@ POST   /api/mission/gates/:phase/approve  # Approve gate
 ```
 
 ### WebSocket Events
+
+```mermaid
+flowchart LR
+    subgraph Sources["Event Sources"]
+        FW[File Watcher]
+        KP[King Process]
+        API[REST API]
+    end
+
+    subgraph Hub["WebSocket Hub"]
+        BC[Broadcast]
+    end
+
+    subgraph Clients["React UI"]
+        C1[Client 1]
+        C2[Client N]
+    end
+
+    FW & KP & API --> BC --> C1 & C2
 ```
-mission_state      # Initial state sync
-king_status        # King running status
-phase_changed      # Phase transitioned
-task_created       # New task created
-task_updated       # Task status changed
-worker_spawned     # Worker started
-worker_completed   # Worker finished
-gate_ready         # Gate criteria met
-gate_approved      # Gate approved
-findings_ready     # New findings available
-king_output        # King process output
-king_error         # King process error
-```
+
+| Event | Description |
+|-------|-------------|
+| `mission_state` | Initial state sync |
+| `king_status` | King running status |
+| `phase_changed` | Phase transitioned |
+| `task_created` | New task created |
+| `task_updated` | Task status changed |
+| `worker_spawned` | Worker started |
+| `worker_completed` | Worker finished |
+| `gate_ready` | Gate criteria met |
+| `gate_approved` | Gate approved |
+| `findings_ready` | New findings available |
+| `king_output` | King process output |
+| `king_error` | King process error |
 
 ## Worker Communication (Handoffs)
 
 Workers don't communicate directly. They output structured JSON handoffs:
 
-```
-Worker completes task
-        │
-        ▼
-Worker outputs JSON to stdout
-        │
-        ▼
-Worker runs: mc handoff findings.json
-        │
-        ▼
-mc-core validates (schema + semantics)
-        │
-        ├── Invalid → Error, worker retries
-        │
-        ▼ Valid
-Stored in .mission/handoffs/
-Compressed to .mission/findings/
-Task status updated in .mission/state/tasks.json
-        │
-        ▼
-Go file watcher sees change
-        │
-        ▼
-WebSocket emits findings_ready event
-        │
-        ▼
-King reads findings, decides next steps
+```mermaid
+sequenceDiagram
+    participant Worker
+    participant CLI as mc CLI
+    participant Core as mc-core
+    participant State as .mission/
+    participant Bridge as Go Bridge
+    participant King
+
+    Worker->>Worker: Complete task
+    Worker->>Worker: Output JSON to stdout
+    Worker->>CLI: mc handoff findings.json
+    CLI->>Core: validate-handoff
+    Core-->>CLI: Valid/Invalid
+    
+    alt Invalid
+        CLI-->>Worker: Error
+        Worker->>Worker: Retry
+    else Valid
+        CLI->>State: Store in handoffs/
+        CLI->>State: Compress to findings/
+        CLI->>State: Update tasks.json
+        State-->>Bridge: File change detected
+        Bridge-->>King: findings_ready event
+        King->>State: Read findings
+        King->>King: Synthesize, decide next
+    end
 ```
 
 This keeps workers isolated and context lean. No message passing, no shared memory — just files.
 
 ## Worker Personas
 
+```mermaid
+graph TB
+    subgraph Models["Model Tiers (Future: Auto-routing)"]
+        direction LR
+        OPUS[("Opus<br/>Strategy & Synthesis")]
+        SONNET[("Sonnet<br/>Complex Tasks")]
+        HAIKU[("Haiku<br/>Simple Tasks")]
+    end
+
+    subgraph Personas["11 Worker Personas"]
+        subgraph Idea
+            R[Researcher]
+        end
+        subgraph Design
+            D[Designer]
+            A[Architect]
+        end
+        subgraph Implement
+            DEV[Developer]
+            DBG[Debugger]
+        end
+        subgraph Verify
+            REV[Reviewer]
+            SEC[Security]
+            TST[Tester]
+            QA[QA]
+        end
+        subgraph Document
+            DOC[Docs]
+        end
+        subgraph Release
+            OPS[DevOps]
+        end
+    end
+
+    OPUS -.->|King only| KING[King Agent]
+    SONNET --> R & D & A & DEV & DBG & SEC
+    HAIKU --> REV & TST & QA & DOC & OPS
+```
+
 | Persona | Phase | Model | Purpose |
 |---------|-------|-------|---------|
+| **King** | All | **Opus** | Strategy, synthesis, user conversation |
 | Researcher | Idea | Sonnet | Feasibility research |
 | Designer | Design | Sonnet | UI mockups |
 | Architect | Design | Sonnet | System design |
@@ -238,9 +378,46 @@ This keeps workers isolated and context lean. No message passing, no shared memo
 | Docs | Document | Haiku | Documentation |
 | DevOps | Release | Haiku | Deployment |
 
+### Model Routing Strategy
+
+**Current:** All workers use their assigned model tier.
+
+**Future (v7):** Smart routing based on task complexity:
+- **Opus** — King agent, complex synthesis, strategic decisions
+- **Sonnet** — Creative work, complex implementation, security analysis
+- **Haiku** — Routine checks, simple tests, documentation, reviews
+
+Cost optimization: Route simple tasks to Haiku, escalate to Sonnet/Opus only when needed.
+
 ## .mission/ Directory
 
 Each project has a `.mission/` directory containing all state:
+
+```mermaid
+graph TD
+    MISSION[.mission/]
+    
+    MISSION --> CLAUDE[CLAUDE.md<br/>King system prompt]
+    MISSION --> CONFIG[config.json<br/>Project settings]
+    
+    MISSION --> STATE[state/]
+    STATE --> PHASE[phase.json]
+    STATE --> TASKS[tasks.json]
+    STATE --> WORKERS[workers.json]
+    STATE --> GATES[gates.json]
+    
+    MISSION --> SPECS[specs/<br/>Design documents]
+    MISSION --> FINDINGS[findings/<br/>Compressed worker output]
+    MISSION --> HANDOFFS[handoffs/<br/>Raw handoff JSONs]
+    MISSION --> CHECKPOINTS[checkpoints/<br/>State snapshots]
+    
+    MISSION --> PROMPTS[prompts/]
+    PROMPTS --> P1[researcher.md]
+    PROMPTS --> P2[designer.md]
+    PROMPTS --> P3[architect.md]
+    PROMPTS --> P4[developer.md]
+    PROMPTS --> P5[... 11 total]
+```
 
 ```
 .mission/
@@ -307,3 +484,9 @@ Project-specific configuration lives in `.mission/config.json`.
 - Prevents rushing to implementation
 - Gates force quality checks
 - Each phase has clear entry/exit criteria
+
+**Why File-Based State?**
+- Claude Code reads/writes files naturally
+- No complex IPC or message passing
+- Easy to inspect and debug
+- Checkpoints are just file copies
