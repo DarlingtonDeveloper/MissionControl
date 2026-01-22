@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -110,16 +111,17 @@ const KingAgentID = "king"
 
 // King manages the King Claude Code process via tmux
 type King struct {
-	missionDir  string
-	workDir     string
-	status      KingStatus
-	tmuxSession string
-	events      chan KingEvent
-	mu          sync.RWMutex
-	stopChan    chan struct{}
-	lastPane    string // Last captured pane state for diff detection
-	totalTokens int    // Cumulative token count
-	totalCost   float64 // Cumulative cost (estimated)
+	missionDir   string
+	workDir      string
+	status       KingStatus
+	tmuxSession  string
+	events       chan KingEvent
+	mu           sync.RWMutex
+	stopChan     chan struct{}
+	lastPane     string       // Last captured pane state for diff detection
+	totalTokens  int          // Cumulative token count
+	totalCost    float64      // Cumulative cost (estimated)
+	fileProtocol *FileProtocol // File-based completion detection
 }
 
 // NewKing creates a new King manager
@@ -127,12 +129,13 @@ func NewKing(workDir string) *King {
 	missionDir := filepath.Join(workDir, ".mission")
 
 	return &King{
-		missionDir:  missionDir,
-		workDir:     workDir,
-		status:      KingStatusStopped,
-		tmuxSession: kingTmuxSession,
-		events:      make(chan KingEvent, 100),
-		stopChan:    make(chan struct{}),
+		missionDir:   missionDir,
+		workDir:      workDir,
+		status:       KingStatusStopped,
+		tmuxSession:  kingTmuxSession,
+		events:       make(chan KingEvent, 100),
+		stopChan:     make(chan struct{}),
+		fileProtocol: NewFileProtocol(missionDir, kingTmuxSession),
 	}
 }
 
@@ -211,6 +214,15 @@ func (k *King) Start() error {
 		dirPath := filepath.Join(k.missionDir, dir)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
 			log.Printf("Warning: failed to create %s directory: %v", dir, err)
+		}
+	}
+
+	// Initialize conversation.md for file-based completion detection
+	conversationPath := filepath.Join(k.missionDir, "conversation.md")
+	if _, err := os.Stat(conversationPath); os.IsNotExist(err) {
+		header := fmt.Sprintf("# Conversation Log\n\nStarted: %s\n\n", time.Now().UTC().Format(time.RFC3339))
+		if err := os.WriteFile(conversationPath, []byte(header), 0644); err != nil {
+			log.Printf("Warning: failed to create conversation.md: %v", err)
 		}
 	}
 
@@ -570,299 +582,76 @@ func (k *King) parseQuestion(pane string) *KingQuestion {
 	return &question
 }
 
-// waitForResponse polls for Claude's response and emits events
+// waitForResponse uses file-based completion detection via mc-protocol
 func (k *King) waitForResponse(userMessage string) {
-	deadline := time.Now().Add(5 * time.Minute) // Long timeout for complex responses
-	var lastResponse string
-	var lastQuestionHash string
-	var sawUserMessage bool
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
 	log.Printf("King: waiting for response to message: %q", userMessage)
 
-	for time.Now().Before(deadline) {
-		select {
-		case <-k.stopChan:
-			return
-		default:
+	// Wait for file protocol to detect ---END--- marker in conversation.md
+	response, err := k.fileProtocol.WaitForConversationResponse(ctx, 5*time.Minute)
+	if err != nil {
+		if err == ErrProtocolTimeout {
+			log.Printf("King: timeout waiting for response")
+			k.emitEvent("king_error", map[string]interface{}{"error": "timeout waiting for response"})
+		} else {
+			log.Printf("King: file protocol error: %v", err)
+			k.emitEvent("king_error", map[string]interface{}{"error": err.Error()})
 		}
-
-		pane, err := k.capturePane()
-		if err != nil {
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Wait until we see the user's message in the pane (confirms it was sent)
-		if !sawUserMessage {
-			if strings.Contains(pane, userMessage) {
-				sawUserMessage = true
-				log.Printf("King: user message confirmed in pane")
-			} else {
-				time.Sleep(pollInterval)
-				continue
-			}
-		}
-
-		// Check if Claude is asking a question (tool use)
-		if k.isQuestionUI(pane) {
-			question := k.parseQuestion(pane)
-			if question != nil {
-				// Create a hash to avoid emitting duplicate question events
-				questionHash := fmt.Sprintf("%s:%d", question.Question, len(question.Options))
-				if questionHash != lastQuestionHash {
-					lastQuestionHash = questionHash
-					log.Printf("King: question detected with %d options", len(question.Options))
-					k.emitEvent("king_question", question)
-				}
-			}
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Parse response from current pane (only responses after the user's message)
-		response := k.extractResponseAfterMessage(pane, userMessage)
-		complete := k.isResponseComplete(pane)
-
-		// Check if Claude is done (prompt visible AND we have a response)
-		if complete && response != "" {
-			if response != lastResponse {
-				log.Printf("King: final response (%d chars)", len(response))
-				k.emitEvent("king_message", map[string]interface{}{
-					"role":      "assistant",
-					"content":   response,
-					"timestamp": time.Now().UnixMilli(),
-				})
-
-				// Count tokens in the response using mc-core
-				if outputTokens, err := core.CountTokens(response); err == nil {
-					// Count input tokens (user message) as well
-					inputTokens := 0
-					if userMessage != "" {
-						if count, err := core.CountTokens(userMessage); err == nil {
-							inputTokens = count
-						}
-					}
-
-					// Update cumulative totals
-					totalNewTokens := inputTokens + outputTokens
-					// Approximate cost: $0.003/1K input, $0.015/1K output for Claude
-					newCost := (float64(inputTokens) * 0.003 / 1000) + (float64(outputTokens) * 0.015 / 1000)
-
-					k.mu.Lock()
-					k.totalTokens += totalNewTokens
-					k.totalCost += newCost
-					currentTokens := k.totalTokens
-					currentCost := k.totalCost
-					k.mu.Unlock()
-
-					log.Printf("King: token usage - input: %d, output: %d, total: %d, cost: $%.4f", inputTokens, outputTokens, currentTokens, currentCost)
-
-					// Emit token_usage for detailed tracking
-					k.emitEvent("token_usage", map[string]interface{}{
-						"input_tokens":  inputTokens,
-						"output_tokens": outputTokens,
-						"timestamp":     time.Now().UnixMilli(),
-					})
-
-					// Emit tokens_updated so King appears with tokens in agent list
-					k.emitEvent("tokens_updated", map[string]interface{}{
-						"agent_id": KingAgentID,
-						"tokens":   currentTokens,
-						"cost":     currentCost,
-					})
-				} else {
-					log.Printf("King: failed to count tokens: %v", err)
-				}
-			}
-
-			k.mu.Lock()
-			k.lastPane = pane
-			k.mu.Unlock()
-			return
-		}
-
-		// Emit streaming updates if response changed
-		if response != "" && response != lastResponse {
-			lastResponse = response
-			k.emitEvent("king_output", map[string]interface{}{
-				"text":      response,
-				"streaming": true,
-			})
-		}
-
-		time.Sleep(pollInterval)
+		return
 	}
 
-	log.Printf("King: timeout waiting for response")
-	k.emitEvent("king_error", map[string]interface{}{"error": "timeout waiting for response"})
+	log.Printf("King: response complete via file protocol (%d chars)", len(response))
+	k.emitEvent("king_message", map[string]interface{}{
+		"role":      "assistant",
+		"content":   response,
+		"timestamp": time.Now().UnixMilli(),
+	})
+	k.emitTokenUsage(userMessage, response)
 }
 
-// isResponseComplete checks if Claude has finished responding
-// Returns true when we see the ❯ prompt after response content
-func (k *King) isResponseComplete(pane string) bool {
-	lines := strings.Split(pane, "\n")
+// emitTokenUsage counts and emits token usage for a response
+func (k *King) emitTokenUsage(userMessage, response string) {
+	outputTokens, err := core.CountTokens(response)
+	if err != nil {
+		log.Printf("King: failed to count tokens: %v", err)
+		return
+	}
 
-	// Find last non-empty line index first
-	lastNonEmpty := -1
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			lastNonEmpty = i
-			break
+	inputTokens := 0
+	if userMessage != "" {
+		if count, err := core.CountTokens(userMessage); err == nil {
+			inputTokens = count
 		}
 	}
 
-	if lastNonEmpty < 0 {
-		return false
-	}
+	// Update cumulative totals
+	totalNewTokens := inputTokens + outputTokens
+	// Approximate cost: $0.003/1K input, $0.015/1K output for Claude
+	newCost := (float64(inputTokens) * 0.003 / 1000) + (float64(outputTokens) * 0.015 / 1000)
 
-	// Check if we're in a question/selection UI (not complete)
-	// Look for indicators like "Enter to select", "↑/↓ to navigate", checkbox markers
-	for i := lastNonEmpty; i >= 0 && i >= lastNonEmpty-10; i-- {
-		line := strings.TrimSpace(lines[i])
-		if strings.Contains(line, "Enter to select") ||
-			strings.Contains(line, "↑/↓") ||
-			strings.Contains(line, "☐") ||
-			strings.Contains(line, "☑") ||
-			strings.Contains(line, "○") ||
-			strings.Contains(line, "●") {
-			return false // In a selection UI, not complete
-		}
-	}
+	k.mu.Lock()
+	k.totalTokens += totalNewTokens
+	k.totalCost += newCost
+	currentTokens := k.totalTokens
+	currentCost := k.totalCost
+	k.mu.Unlock()
 
-	// Look for prompt in last 15 non-empty lines from the actual content end
-	checkedLines := 0
-	for i := lastNonEmpty; i >= 0 && checkedLines < 15; i-- {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-		checkedLines++
+	log.Printf("King: token usage - input: %d, output: %d, total: %d, cost: $%.4f",
+		inputTokens, outputTokens, currentTokens, currentCost)
 
-		// Check for working indicators - definitely not complete
-		if strings.Contains(line, "∴") && strings.Contains(line, "Thinking") {
-			return false
-		}
+	k.emitEvent("token_usage", map[string]interface{}{
+		"input_tokens":  inputTokens,
+		"output_tokens": outputTokens,
+		"timestamp":     time.Now().UnixMilli(),
+	})
 
-		// Check if line starts with spinner character (braille patterns)
-		runes := []rune(line)
-		if len(runes) > 0 {
-			first := runes[0]
-			if first >= '⠀' && first <= '⣿' { // Braille pattern block - spinner
-				return false
-			}
-		}
-
-		// Found the input prompt - must be just "❯" or "❯ " followed by user input area
-		// NOT a selection cursor like "❯ 1. Option"
-		if strings.HasPrefix(line, "❯") {
-			// Check it's not a selection indicator (❯ followed by number or option)
-			rest := strings.TrimPrefix(line, "❯")
-			rest = strings.TrimSpace(rest)
-			// If empty or looks like user could type here, it's the prompt
-			if rest == "" || !strings.ContainsAny(rest[:min(1, len(rest))], "0123456789") {
-				// Make sure it's not in a selection context
-				if !strings.Contains(line, ".") || len(rest) > 50 {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// extractResponseAfterMessage extracts Claude's response that appears after the user's message
-func (k *King) extractResponseAfterMessage(pane, userMessage string) string {
-	lines := strings.Split(pane, "\n")
-
-	// Find where the user's message appears on a prompt line (starts with ❯)
-	messageLineIdx := -1
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// Only look at prompt lines (where user input appears)
-		if strings.HasPrefix(trimmed, "❯") && strings.Contains(line, userMessage) {
-			messageLineIdx = i
-			// Don't break - we want the LAST occurrence in case message appears multiple times
-		}
-	}
-
-	if messageLineIdx < 0 {
-		return ""
-	}
-
-	// Only look at lines AFTER the user's message
-	return k.extractResponseFromLines(lines[messageLineIdx+1:])
-}
-
-// extractResponseFromLines extracts Claude's response from a slice of lines
-func (k *King) extractResponseFromLines(lines []string) string {
-	var response strings.Builder
-
-	// Regex to match Claude's response markers
-	// ⏺ marks the start of Claude's response
-	responseMarker := regexp.MustCompile(`⏺\s*(.*)`)
-
-	inResponse := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Skip empty lines unless we're in a response
-		if trimmed == "" {
-			if inResponse {
-				response.WriteString("\n")
-			}
-			continue
-		}
-
-		// Skip thinking sections
-		if strings.Contains(line, "∴") {
-			inResponse = false // Reset - thinking means new response coming
-			continue
-		}
-
-		// Check for response marker
-		if matches := responseMarker.FindStringSubmatch(line); len(matches) > 1 {
-			inResponse = true
-			response.Reset() // Start fresh for this response
-			if matches[1] != "" {
-				response.WriteString(matches[1])
-				response.WriteString("\n")
-			}
-			continue
-		}
-
-		// If we're in a response block
-		if inResponse {
-			// Stop at prompt (but keep the response we've collected)
-			if strings.HasPrefix(trimmed, "❯") {
-				break
-			}
-			// Stop at horizontal lines (end of response box)
-			if strings.HasPrefix(trimmed, "───") {
-				break
-			}
-			// Clean up box-drawing characters from continuation lines
-			cleaned := strings.TrimLeft(line, "│ \t")
-			// Skip box decorations
-			if strings.HasPrefix(cleaned, "─") || strings.HasPrefix(cleaned, "└") ||
-				strings.HasPrefix(cleaned, "┘") || strings.HasPrefix(cleaned, "╰") ||
-				strings.HasPrefix(cleaned, "╯") {
-				continue
-			}
-			if cleaned != "" {
-				response.WriteString(cleaned)
-				response.WriteString("\n")
-			}
-		}
-	}
-
-	return strings.TrimSpace(response.String())
+	k.emitEvent("tokens_updated", map[string]interface{}{
+		"agent_id": KingAgentID,
+		"tokens":   currentTokens,
+		"cost":     currentCost,
+	})
 }
 
 // emitEvent sends an event to the events channel

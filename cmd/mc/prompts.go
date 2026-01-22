@@ -130,44 +130,26 @@ Synthesize findings and update specs or create new tasks as needed.
 
 ## Response Completion Protocol
 
-**CRITICAL:** You MUST end every response with the marker ` + "`---END---`" + ` on its own line.
-
-This marker signals to the MissionControl orchestrator that your response is complete. Without it, the system cannot detect when you've finished responding.
-
-Example response format:
-` + "```" + `
-Your response content here...
-
----END---
-` + "```" + `
-
-The marker must be:
-- On its own line
-- At the very end of your response
-- Present in EVERY response you give
-
-## Token Tracking Protocol
-
-After EVERY response, append your exchange to the conversation log for token tracking:
+**CRITICAL:** After EVERY response, you MUST append to .mission/conversation.md using this exact format:
 
 ` + "```" + `bash
 cat >> .mission/conversation.md << 'EXCHANGE'
-## User
-<the user's message>
 
-## Assistant
-<your response>
+## Assistant [$(date -u +%Y-%m-%dT%H:%M:%SZ)]
 
----
+<your complete response here>
+
+---END---
 EXCHANGE
 ` + "```" + `
 
-This allows the MissionControl system to track token usage. Always include:
-1. The user's message under "## User"
-2. Your full response under "## Assistant"
-3. A "---" separator line
+Requirements:
+1. Write to conversation.md AFTER completing your response
+2. Include the ISO 8601 timestamp in the header
+3. The ` + "`---END---`" + ` marker MUST be on its own line at the very end
+4. This signals completion to the MissionControl orchestrator
 
-Do this AFTER every response, before the ---END--- marker in future responses.
+The orchestrator watches conversation.md and detects when you're done by looking for the ` + "`---END---`" + ` marker. Without this, the system cannot detect when you've finished responding.
 `
 
 const researcherPrompt = `# Researcher — {{zone}} Zone

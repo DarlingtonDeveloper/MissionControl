@@ -253,62 +253,7 @@ func TestKingSessionExists(t *testing.T) {
 	}
 }
 
-func TestKingExtractResponseAfterMessage(t *testing.T) {
-	king := NewKing("/tmp/test")
-
-	testCases := []struct {
-		name        string
-		pane        string
-		userMessage string
-		expected    string
-	}{
-		{
-			name:        "simple response",
-			pane:        "❯ Say hello\n⏺ Hello, I'm Claude!\n❯ ",
-			userMessage: "Say hello",
-			expected:    "Hello, I'm Claude!",
-		},
-		{
-			name:        "no message found",
-			pane:        "❯ \n",
-			userMessage: "nonexistent",
-			expected:    "",
-		},
-		{
-			name:        "multiline response",
-			pane:        "❯ Test\n⏺ Line one\n  Line two\n  Line three\n───\n❯ ",
-			userMessage: "Test",
-			expected:    "Line one\nLine two\nLine three",
-		},
-		{
-			name:        "response with thinking",
-			pane:        "❯ Hi\n∴ Thinking...\n⏺ Hello there!\n❯ ",
-			userMessage: "Hi",
-			expected:    "Hello there!",
-		},
-		{
-			name:        "multiple exchanges - get latest",
-			pane:        "❯ First\n⏺ First response\n❯ Second\n⏺ Second response\n❯ ",
-			userMessage: "Second",
-			expected:    "Second response",
-		},
-		{
-			name:        "ignore old response",
-			pane:        "❯ Old message\n⏺ Old response\n❯ New message\n⏺ New response\n❯ ",
-			userMessage: "New message",
-			expected:    "New response",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := king.extractResponseAfterMessage(tc.pane, tc.userMessage)
-			if result != tc.expected {
-				t.Errorf("expected %q, got %q", tc.expected, result)
-			}
-		})
-	}
-}
+// TestKingExtractResponseAfterMessage removed - response extraction now uses file protocol
 
 func TestKingIsQuestionUI(t *testing.T) {
 	king := NewKing("/tmp/test")
@@ -387,62 +332,4 @@ Enter to select · ↑/↓ to navigate`
 	}
 }
 
-func TestKingIsResponseComplete(t *testing.T) {
-	king := NewKing("/tmp/test")
-
-	testCases := []struct {
-		name     string
-		pane     string
-		expected bool
-	}{
-		{
-			name:     "prompt visible",
-			pane:     "Some output\n❯ ",
-			expected: true,
-		},
-		{
-			name:     "thinking indicator",
-			pane:     "Some output\n∴ Thinking...",
-			expected: false,
-		},
-		{
-			name:     "spinner visible",
-			pane:     "Some output\n⠋ Working...",
-			expected: false,
-		},
-		{
-			name:     "empty pane",
-			pane:     "",
-			expected: false,
-		},
-		{
-			name:     "prompt after response",
-			pane:     "⏺ Hello!\n───\n❯ ",
-			expected: true,
-		},
-		{
-			name:     "selection UI - not complete",
-			pane:     "⏺ Question?\n❯ 1. Option one\n  2. Option two\nEnter to select · ↑/↓ to navigate",
-			expected: false,
-		},
-		{
-			name:     "checkbox UI - not complete",
-			pane:     "☐ Task\nWhat would you like?\n❯ 1. First\nEnter to select",
-			expected: false,
-		},
-		{
-			name:     "prompt with user text",
-			pane:     "⏺ Response\n❯ hello world",
-			expected: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := king.isResponseComplete(tc.pane)
-			if result != tc.expected {
-				t.Errorf("expected %v, got %v", tc.expected, result)
-			}
-		})
-	}
-}
+// TestKingIsResponseComplete removed - completion detection now uses file protocol
